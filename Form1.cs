@@ -1,15 +1,15 @@
 using OrtakAlanYetkiKontrol.Services;
 using OrtakAlanYetkiKontrol.Models;
-using System.Text; // CSV (Excel) kaydı için gerekli
+using System.Text;
 
 namespace OrtakAlanYetkiKontrol;
 
 public partial class Form1 : Form
 {
-    private DataGridView _grid;
+    private DataGridView _grid = null!;
     private YetkiServisi _yetkiServisi;
-    private Label _lblDurum;
-    private List<YetkiRaporu> _tumVeriler = new(); // Filtreleme için tüm verileri burada tutacağız
+    private Label _lblDurum = null!;
+    private List<YetkiRaporu> _tumVeriler = new();
 
     public Form1()
     {
@@ -19,34 +19,48 @@ public partial class Form1 : Form
 
     private void InitializeCustomComponents()
     {
-        this.Text = "Ern Holding - Ortak Alan Yetki Analizörü";
-        this.Size = new Size(1100, 700);
+        this.Text = "Ern Holding | ACL Analyzer & Security Auditor";
+        this.Size = new Size(1200, 750);
         this.StartPosition = FormStartPosition.CenterScreen;
+        this.BackColor = Color.FromArgb(245, 246, 250); 
+        this.Font = new Font("Segoe UI", 9);
 
-        // Üst Panel
-        Panel pnlUst = new Panel { Dock = DockStyle.Top, Height = 100, BackColor = Color.FromArgb(240, 240, 240) };
-
-        // 1. Klasör Seçme Butonu
-        Button btnKlasorSec = new Button { 
-            Text = "📁 Klasör Tara", 
-            Left = 20, Top = 20, Width = 150, Height = 45,
-            BackColor = Color.FromArgb(0, 122, 204), ForeColor = Color.White,
-            FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 10, FontStyle.Bold)
+        Panel pnlHeader = new Panel { 
+            Dock = DockStyle.Top, 
+            Height = 110, 
+            BackColor = Color.White,
+            BorderStyle = BorderStyle.None 
         };
+
+        Panel pnlAltCizgi = new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = Color.FromArgb(220, 221, 225) };
+        pnlHeader.Controls.Add(pnlAltCizgi);
+
+        Button btnKlasorSec = new Button { 
+            Text = "📁 Klasörü Analiz Et", 
+            Left = 25, Top = 20, Width = 190, Height = 45,
+            BackColor = Color.FromArgb(52, 152, 219), ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand,
+            Font = new Font("Segoe UI", 10, FontStyle.Bold)
+        };
+        btnKlasorSec.FlatAppearance.BorderSize = 0;
         btnKlasorSec.Click += BtnKlasorSec_Click;
 
-        // 2. Excel (CSV) Butonu
         Button btnExcel = new Button { 
-            Text = "📊 Excel'e Aktar (CSV)", 
-            Left = 180, Top = 20, Width = 180, Height = 45,
-            BackColor = Color.FromArgb(33, 115, 70), ForeColor = Color.White,
-            FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 10, FontStyle.Bold)
+            Text = "💾 Raporu İndir (CSV)", 
+            Left = 225, Top = 20, Width = 190, Height = 45,
+            BackColor = Color.FromArgb(46, 204, 113), ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand,
+            Font = new Font("Segoe UI", 10, FontStyle.Bold)
         };
+        btnExcel.FlatAppearance.BorderSize = 0;
         btnExcel.Click += BtnExcel_Click;
 
-        // 3. Arama Kutusu (Filtreleme)
-        Label lblAra = new Label { Text = "🔍 Kullanıcı Ara:", Left = 700, Top = 35, AutoSize = true };
-        TextBox txtAra = new TextBox { Left = 800, Top = 32, Width = 250, Font = new Font("Segoe UI", 11) };
+        Label lblAra = new Label { Text = "Hızlı Filtreleme", Left = 860, Top = 15, AutoSize = true, ForeColor = Color.Gray };
+        TextBox txtAra = new TextBox { 
+            Left = 860, Top = 35, Width = 280, 
+            Font = new Font("Segoe UI", 12),
+            BorderStyle = BorderStyle.FixedSingle 
+        };
         txtAra.TextChanged += (s, e) => {
             string aramaMetni = txtAra.Text.ToLower();
             var filtrelenmis = _tumVeriler.Where(x => 
@@ -54,33 +68,49 @@ public partial class Form1 : Form
                 x.YetkiTuru.ToLower().Contains(aramaMetni)
             ).ToList();
             _grid.DataSource = filtrelenmis;
+            Renklendir();
         };
 
         _lblDurum = new Label { 
-            Text = "Lütfen bir klasör seçin...", 
-            Left = 20, Top = 75, AutoSize = true, 
-            Font = new Font("Segoe UI", 9, FontStyle.Italic) 
+            Text = "Sistem hazır. Lütfen bir hedef klasör seçin...", 
+            Left = 25, Top = 75, AutoSize = true, 
+            ForeColor = Color.FromArgb(127, 140, 141),
+            Font = new Font("Segoe UI", 9, FontStyle.Italic)
         };
 
-        pnlUst.Controls.Add(btnKlasorSec);
-        pnlUst.Controls.Add(btnExcel);
-        pnlUst.Controls.Add(lblAra);
-        pnlUst.Controls.Add(txtAra);
-        pnlUst.Controls.Add(_lblDurum);
+        pnlHeader.Controls.Add(btnKlasorSec);
+        pnlHeader.Controls.Add(btnExcel);
+        pnlHeader.Controls.Add(lblAra);
+        pnlHeader.Controls.Add(txtAra);
+        pnlHeader.Controls.Add(_lblDurum);
 
-        // Tablo
         _grid = new DataGridView { 
             Dock = DockStyle.Fill, 
             AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
             BackgroundColor = Color.White,
-            ReadOnly = true,
-            AllowUserToAddRows = false,
+            BorderStyle = BorderStyle.None,
+            CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
+            ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None,
+            EnableHeadersVisualStyles = false,
+            SelectionMode = DataGridViewSelectionMode.FullRowSelect,
             RowHeadersVisible = false,
-            SelectionMode = DataGridViewSelectionMode.FullRowSelect
+            RowTemplate = { Height = 40 },
+            GridColor = Color.FromArgb(236, 240, 241),
+            // --- KRİTİK AYARLAR BURADA ---
+            ReadOnly = true, // Düzenlemeyi kapatır
+            AllowUserToResizeRows = false,
+            EditMode = DataGridViewEditMode.EditProgrammatically // Çift tıklama ile yazı yazmayı engeller
         };
 
+        _grid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(44, 62, 80);
+        _grid.ColumnHeadersDefaultCellStyle.ForeColor = Color.White;
+        _grid.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 10, FontStyle.Bold);
+        _grid.ColumnHeadersHeight = 45;
+
+        _grid.DataBindingComplete += (s, e) => Renklendir();
+
         this.Controls.Add(_grid);
-        this.Controls.Add(pnlUst);
+        this.Controls.Add(pnlHeader);
     }
 
     private void BtnKlasorSec_Click(object? sender, EventArgs e)
@@ -88,37 +118,63 @@ public partial class Form1 : Form
         using var fbd = new FolderBrowserDialog();
         if (fbd.ShowDialog() == DialogResult.OK)
         {
-            _lblDurum.Text = $"Taranan Yol: {fbd.SelectedPath}";
+            _lblDurum.Text = $"📍 Analiz Edilen Konum: {fbd.SelectedPath}";
+            _lblDurum.ForeColor = Color.FromArgb(44, 62, 80);
             _tumVeriler = _yetkiServisi.YetkileriGetir(fbd.SelectedPath);
+            _grid.DataSource = null;
             _grid.DataSource = _tumVeriler;
         }
     }
 
-    // --- Excel (CSV) Aktarma Metodu ---
+    private void Renklendir()
+    {
+        foreach (DataGridViewRow row in _grid.Rows)
+        {
+            if (row.DataBoundItem is YetkiRaporu rapor)
+            {
+                if ((rapor.KullaniciAdi.Contains("Everyone") || rapor.KullaniciAdi.Contains("Users")) 
+                    && rapor.YetkiTuru.Contains("FullControl"))
+                {
+                    row.DefaultCellStyle.BackColor = Color.FromArgb(231, 76, 60);
+                    row.DefaultCellStyle.ForeColor = Color.White;
+                    row.DefaultCellStyle.SelectionBackColor = Color.FromArgb(192, 57, 43);
+                    row.DefaultCellStyle.SelectionForeColor = Color.White;
+                }
+                else if (rapor.MirasMi == "Hayır")
+                {
+                    row.DefaultCellStyle.BackColor = Color.FromArgb(255, 234, 167);
+                    row.DefaultCellStyle.ForeColor = Color.Black;
+                    row.DefaultCellStyle.SelectionBackColor = Color.FromArgb(253, 203, 110);
+                    row.DefaultCellStyle.SelectionForeColor = Color.Black;
+                }
+                else
+                {
+                    row.DefaultCellStyle.BackColor = Color.White;
+                    row.DefaultCellStyle.SelectionBackColor = Color.FromArgb(52, 152, 219);
+                    row.DefaultCellStyle.SelectionForeColor = Color.White;
+                }
+            }
+        }
+    }
+
     private void BtnExcel_Click(object? sender, EventArgs e)
     {
-        if (_tumVeriler.Count == 0) {
-            MessageBox.Show("Önce bir tarama yapmalısınız!", "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return;
-        }
+        if (_tumVeriler.Count == 0) return;
 
-        using var sfd = new SaveFileDialog();
-        sfd.Filter = "CSV Dosyası (*.csv)|*.csv";
-        sfd.FileName = "Yetki_Raporu_" + DateTime.Now.ToString("yyyyMMdd_HHmm") + ".csv";
+        using var sfd = new SaveFileDialog { 
+            Filter = "CSV Dosyası (*.csv)|*.csv", 
+            FileName = $"ACL_Rapor_{DateTime.Now:yyyyMMdd_HHmm}.csv" 
+        };
 
         if (sfd.ShowDialog() == DialogResult.OK)
         {
             var csv = new StringBuilder();
-            // Başlık satırı (Excel'in düzgün okuması için en başa bir kod ekliyoruz)
             csv.AppendLine("Klasor Yolu;Kullanici Adi;Yetki Turu;Izin Durumu;Miras Mi");
-
             foreach (var item in _tumVeriler)
-            {
                 csv.AppendLine($"{item.KlasorYolu};{item.KullaniciAdi};{item.YetkiTuru};{item.IzinDurumu};{item.MirasMi}");
-            }
 
             File.WriteAllText(sfd.FileName, csv.ToString(), Encoding.UTF8);
-            MessageBox.Show("Rapor başarıyla kaydedildi!", "Başarılı", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show("Rapor kaydedildi!", "Başarılı");
         }
     }
 }
