@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrtakAlanYetkiKontrol", "OrtakAlanYetkiKontrol.csproj", "{9AB84E4F-59E6-7F3A-4062-BAFA0AE38884}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{9AB84E4F-59E6-7F3A-4062-BAFA0AE38884}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9AB84E4F-59E6-7F3A-4062-BAFA0AE38884}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9AB84E4F-59E6-7F3A-4062-BAFA0AE38884}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9AB84E4F-59E6-7F3A-4062-BAFA0AE38884}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {902C2D52-7B5A-4FD4-8C6F-0B5536703FBE}
+	EndGlobalSection
+EndGlobal
