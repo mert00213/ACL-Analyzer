@@ -18,7 +18,7 @@ public partial class Form1 : Form
     private List<YetkiRaporu> _tumVeriler = new();
     
     // Sabit Komutlar
-    private const string CMD_SCAN_FOLDER = "scanFolder"; // React'tan gelecek
+    private const string CMD_SCAN_FOLDER = "scanFolder"; 
     private const string CMD_EXPORT_PDF = "exportPdf";
     private const string CMD_EXPORT_EXCEL = "exportExcel";
 
@@ -69,16 +69,19 @@ public partial class Form1 : Form
     {
         try
         {
-            // React'tan gelen basit string mesajı yakala
-            string message = e.TryGetWebMessageAsString();
+            // React'tan gelen veriyi JSON zırhıyla güvenli okuyoruz
+            string rawMessage = e.WebMessageAsJson;
             
-            // Eğer React'tan "open_folder_picker" veya "scanFolder" gelirse
-            if (message == "scanFolder" || message == "open_folder_picker")
+            if (!string.IsNullOrEmpty(rawMessage) && (rawMessage.Contains("scanFolder") || rawMessage.Contains("open_folder_picker")))
             {
                 using (var fbd = new FolderBrowserDialog())
                 {
                     fbd.Description = "Lütfen Taramak İstediğiniz Ana Klasörü Seçin";
-                    if (fbd.ShowDialog() == DialogResult.OK)
+                    fbd.UseDescriptionForTitle = true;
+                    fbd.ShowNewFolderButton = false;
+
+                    // 'this' eklendi: Pencere uygulamanın tam üstünde açılsın
+                    if (fbd.ShowDialog(this) == DialogResult.OK)
                     {
                         await RunOptimizedScan(fbd.SelectedPath);
                     }
@@ -94,7 +97,7 @@ public partial class Form1 : Form
     // 95.000 DOSYA İÇİN ÖZEL OPTİMİZASYON METODU
     private async Task RunOptimizedScan(string folderPath)
     {
-        SendMessageToFrontend("status", "🔄 Tarama Başladı. 95.000+ dosya işleniyor...");
+        SendMessageToFrontend("status", "🔄 Tarama Başladı. Dosyalar işleniyor...");
 
         try
         {
@@ -115,6 +118,7 @@ public partial class Form1 : Form
                 })
             };
 
+            // React'ın beklediği scanComplete nesnesi olarak fırlat
             string jsonResponse = JsonSerializer.Serialize(results);
             SendMessageToFrontend("scanComplete", jsonResponse);
             SendMessageToFrontend("success", "✅ Tarama Tamamlandı!");
@@ -125,10 +129,25 @@ public partial class Form1 : Form
         }
     }
 
+    // =======================================================================
+    // DÜZELTİLEN VE JAVASCRIPT'İ ÇÖKMELERDEN KORUYAN ZIRHLI METOT
+    // =======================================================================
     private void SendMessageToFrontend(string type, string message)
     {
-        // React tarafındaki 'backendMessage' eventini tetikler
-        string script = $"window.dispatchEvent(new CustomEvent('backendMessage', {{ detail: {{ type: '{type}', data: '{message}' }} }}));";
-        _webView.CoreWebView2.ExecuteScriptAsync(script);
+        try 
+        {
+            // Ters bölü (\) gibi karakterlerin JavaScript'i bozmasını önlemek için
+            // veriyi güvenli bir C# objesi olarak paketleyip JSON'a çeviriyoruz.
+            var payload = new { type = type, data = message };
+            string safeJson = JsonSerializer.Serialize(payload);
+            
+            // JavaScript kodunu CustomEvent ile tetikliyoruz
+            string script = $"window.dispatchEvent(new CustomEvent('backendMessage', {{ detail: {safeJson} }}));";
+            _webView.CoreWebView2.ExecuteScriptAsync(script);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine("Frontend'e mesaj gönderilemedi: " + ex.Message);
+        }
     }
 }
