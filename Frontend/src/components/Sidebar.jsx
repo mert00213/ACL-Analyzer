@@ -34,21 +34,39 @@ export default function Sidebar() {
           <img src="/ern_holding.png" alt="Ern Holding Logo" className="w-24 h-auto" />
         </div>
         <div>
-          <h1 className="text-xl font-bold">Ern Holding</h1>
-          <p className="text-sm text-teal-50 opacity-75 mt-1">Ern Enerji</p>
+          <h1 className="text-lg font-bold leading-tight">Klasör Yetki Kontrol Sistemi</h1>
         </div>
       </div>
 
-      {/* Klasör Tara Butonu */}
+      {/* Klasör Seç Butonu */}
       <button
         onClick={handleScanFolder}
         className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg mb-6 active:scale-95 active:shadow-inner"
       >
-        📁 Klasör Tara
+        📁 Klasör Seç
       </button>
 
       {/* Spacer */}
       <div className="flex-1"></div>
+
+      {/* Footer / Çıkış */}
+      <div>
+        <button
+          onClick={() => {
+             if (window.chrome && window.chrome.webview) {
+               window.chrome.webview.postMessage({ command: "exitApp" });
+             } else {
+                 console.warn("Tarayıcıda çıkış yapıldı.");
+             }
+          }}
+          className="w-full border border-red-500/50 hover:bg-red-500 hover:text-white text-red-200 font-medium py-2.5 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
+        >
+          🚪 Çıkış Yap
+        </button>
+        <div className="text-center mt-3 text-white/40 text-xs font-medium tracking-wider">
+          v1.0.1
+        </div>
+      </div>
     </div>
   );
 }

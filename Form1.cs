@@ -21,6 +21,7 @@ public partial class Form1 : Form
     private const string CMD_SCAN_FOLDER = "scanFolder"; 
     private const string CMD_EXPORT_PDF = "exportPdf";
     private const string CMD_EXPORT_EXCEL = "exportExcel";
+    private const string CMD_EXIT_APP = "exitApp";
 
     public Form1()
     {
@@ -72,19 +73,33 @@ public partial class Form1 : Form
             // React'tan gelen veriyi JSON zırhıyla güvenli okuyoruz
             string rawMessage = e.WebMessageAsJson;
             
-            if (!string.IsNullOrEmpty(rawMessage) && (rawMessage.Contains("scanFolder") || rawMessage.Contains("open_folder_picker")))
+            if (!string.IsNullOrEmpty(rawMessage))
             {
-                using (var fbd = new FolderBrowserDialog())
+                if (rawMessage.Contains("scanFolder") || rawMessage.Contains("open_folder_picker"))
                 {
-                    fbd.Description = "Lütfen Taramak İstediğiniz Ana Klasörü Seçin";
-                    fbd.UseDescriptionForTitle = true;
-                    fbd.ShowNewFolderButton = false;
-
-                    // 'this' eklendi: Pencere uygulamanın tam üstünde açılsın
-                    if (fbd.ShowDialog(this) == DialogResult.OK)
+                    using (var fbd = new FolderBrowserDialog())
                     {
-                        await RunOptimizedScan(fbd.SelectedPath);
+                        fbd.Description = "Lütfen Taramak İstediğiniz Ana Klasörü Seçin";
+                        fbd.UseDescriptionForTitle = true;
+                        fbd.ShowNewFolderButton = false;
+
+                        if (fbd.ShowDialog(this) == DialogResult.OK)
+                        {
+                            await RunOptimizedScan(fbd.SelectedPath);
+                        }
                     }
+                }
+                else if (rawMessage.Contains(CMD_EXPORT_PDF))
+                {
+                    ExportToPdf();
+                }
+                else if (rawMessage.Contains(CMD_EXPORT_EXCEL))
+                {
+                    ExportToExcel();
+                }
+                else if (rawMessage.Contains(CMD_EXIT_APP))
+                {
+                    Application.Exit();
                 }
             }
         }
@@ -126,6 +141,120 @@ public partial class Form1 : Form
         catch (Exception ex)
         {
             SendMessageToFrontend("error", "Tarama yarıda kesildi: " + ex.Message);
+        }
+    }
+
+    private async void ExportToPdf()
+    {
+        if (_tumVeriler == null || !_tumVeriler.Any()) {
+            SendMessageToFrontend("error", "Dışa aktarılacak yetki verisi bulunamadı. Lütfen önce bir klasör taratın.");
+            return;
+        }
+
+        using (var sfd = new SaveFileDialog() { Filter = "PDF Dosyası|*.pdf", FileName = "Ern_Yetki_Analiz_" + DateTime.Now.ToString("yyyyMMdd_HHmm") + ".pdf" })
+        {
+            if (sfd.ShowDialog(this) == DialogResult.OK)
+            {
+                SendMessageToFrontend("status", "PDF oluşturuluyor, lütfen bekleyin...");
+                try {
+                    string filePath = sfd.FileName;
+                    await Task.Run(() => {
+                        using (FileStream stream = new FileStream(filePath, FileMode.Create))
+                        {
+                            Document pdfDoc = new Document(PageSize.A4.Rotate(), 20f, 20f, 30f, 30f);
+                            PdfWriter.GetInstance(pdfDoc, stream);
+                            pdfDoc.Open();
+
+                            string ttf = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "arial.ttf");
+                            BaseFont bf = BaseFont.CreateFont(ttf, BaseFont.IDENTITY_H, BaseFont.NOT_EMBEDDED);
+                            PdfFont fontTitle = new PdfFont(bf, 16, PdfFont.BOLD, new BaseColor(0, 88, 78)); 
+                            PdfFont fontHeader = new PdfFont(bf, 10, PdfFont.BOLD, BaseColor.WHITE);
+                            PdfFont fontNormal = new PdfFont(bf, 9, PdfFont.NORMAL, BaseColor.DARK_GRAY);
+                            PdfFont fontDanger = new PdfFont(bf, 9, PdfFont.BOLD, BaseColor.RED);
+
+                            Paragraph title = new Paragraph("ERN HOLDİNG - ORTAK ALAN YETKİ KONTROL RAPORU", fontTitle);
+                            title.Alignment = Element.ALIGN_CENTER;
+                            title.SpacingAfter = 20f;
+                            pdfDoc.Add(title);
+
+                            PdfPTable table = new PdfPTable(4);
+                            table.WidthPercentage = 100;
+                            table.SetWidths(new float[] { 4f, 2f, 2f, 1f });
+
+                            string[] headers = { "Dosya/Klasör Yolu", "Kullanıcı/Grup", "Yetki Türü", "Miras" };
+                            foreach (var hdr in headers) {
+                                PdfPCell cell = new PdfPCell(new Phrase(hdr, fontHeader));
+                                cell.BackgroundColor = new BaseColor(0, 88, 78);
+                                cell.Padding = 8f;
+                                cell.HorizontalAlignment = Element.ALIGN_CENTER;
+                                table.AddCell(cell);
+                            }
+
+                            // Performans için PDF'e ilk 5000 satırı aktar
+                            foreach(var item in _tumVeriler.Take(5000)) {
+                                bool isRisky = item.KullaniciAdi.Contains("Everyone") || item.YetkiTuru.Contains("Full");
+                                
+                                PdfPCell c1 = new PdfPCell(new Phrase(item.KlasorYolu, fontNormal));
+                                PdfPCell c2 = new PdfPCell(new Phrase(item.KullaniciAdi, isRisky ? fontDanger : fontNormal));
+                                PdfPCell c3 = new PdfPCell(new Phrase(item.YetkiTuru, isRisky ? fontDanger : fontNormal));
+                                PdfPCell c4 = new PdfPCell(new Phrase(item.MirasMi, fontNormal));
+
+                                BaseColor rowBg = isRisky ? new BaseColor(255, 235, 238) : BaseColor.WHITE;
+                                c1.BackgroundColor = rowBg; c2.BackgroundColor = rowBg; c3.BackgroundColor = rowBg; c4.BackgroundColor = rowBg;
+                                c1.Padding = 6f; c2.Padding = 6f; c3.Padding = 6f; c4.Padding = 6f;
+
+                                table.AddCell(c1); table.AddCell(c2); table.AddCell(c3); table.AddCell(c4);
+                            }
+
+                            pdfDoc.Add(table);
+                            pdfDoc.Close();
+                        }
+                    });
+                    
+                    SendMessageToFrontend("success", "PDF başarıyla kaydedildi.");
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = filePath, UseShellExecute = true });
+                }
+                catch (Exception ex) {
+                    SendMessageToFrontend("error", "PDF oluşturulurken hata: " + ex.Message);
+                }
+            }
+        }
+    }
+
+    private async void ExportToExcel()
+    {
+        if (_tumVeriler == null || !_tumVeriler.Any()) {
+            SendMessageToFrontend("error", "Dışa aktarılacak veri bulunamadı.");
+            return;
+        }
+
+        using (var sfd = new SaveFileDialog() { Filter = "Excel Dosyası (CSV)|*.csv", FileName = "Ern_Yetki_Analiz_" + DateTime.Now.ToString("yyyyMMdd_HHmm") + ".csv" })
+        {
+            if (sfd.ShowDialog(this) == DialogResult.OK)
+            {
+                SendMessageToFrontend("status", "Excel aktarılıyor, lütfen bekleyin...");
+                try {
+                    string filePath = sfd.FileName;
+                    await Task.Run(() => {
+                        StringBuilder sb = new StringBuilder();
+                        sb.AppendLine("Dosya/Klasör Yolu;Kullanıcı/Grup;Yetki Türü;Miras");
+                        foreach (var item in _tumVeriler)
+                        {
+                            string path = $"\"{item.KlasorYolu.Replace("\"", "\"\"")}\"";
+                            string user = $"\"{item.KullaniciAdi.Replace("\"", "\"\"")}\"";
+                            string perm = $"\"{item.YetkiTuru.Replace("\"", "\"\"")}\"";
+                            string inherited = $"\"{item.MirasMi.Replace("\"", "\"\"")}\"";
+                            sb.AppendLine($"{path};{user};{perm};{inherited}");
+                        }
+                        File.WriteAllText(filePath, sb.ToString(), new UTF8Encoding(true)); // BOM ile Türkçe karakter destekli
+                    });
+                    SendMessageToFrontend("success", "Excel dizine başarıyla kaydedildi.");
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = filePath, UseShellExecute = true });
+                }
+                catch (Exception ex) {
+                    SendMessageToFrontend("error", "Excel oluşturulurken hata: " + ex.Message);
+                }
+            }
         }
     }
 

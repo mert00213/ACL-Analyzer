@@ -107,10 +107,11 @@ function App() {
         <div className="p-8 flex-1 overflow-auto">
           {/* YETKİ DETAYLARI LİSTESİ (AĞAÇ GÖRÜNÜMÜ) - TAM EKRAN */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col flex-1 h-full min-h-0">
-            {/* Eski Tablo Başlığı Yerine Yeni Tasarıma Uygun Araç Çubuğu */}
+            {/* Araç Çubuğu */}
             <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-              <div className="flex items-center gap-4 flex-1">
-                 <div className="relative w-80 shadow-sm rounded-md">
+              {/* Sol Taraf: Yol Gösterge ve Seç Butonu */}
+              <div className="flex items-center gap-4">
+                 <div className="relative w-96 shadow-sm rounded-md">
                     <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">📂</span>
                     <input 
                       type="text" 
@@ -122,23 +123,47 @@ function App() {
                  </div>
                  <button 
                    onClick={handleScanFolder}
-                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-5 rounded-md shadow transition-colors"
+                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-6 rounded-md shadow transition-colors"
                  >
                    Seç
                  </button>
-                 <label className="flex items-center gap-2 cursor-pointer ml-4">
-                   <input 
-                     type="checkbox" 
-                     checked={showSubfolders}
-                     onChange={e => setShowSubfolders(e.target.checked)}
-                     className="w-5 h-5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                   />
-                   <span className="text-slate-700 font-semibold text-sm">Alt Klasörleri Listele</span>
-                 </label>
+                 
+                 {/* Dışa Aktar Butonları */}
+                 <div className="flex items-center gap-2 ml-2 border-l border-slate-300 pl-4">
+                   <button 
+                     onClick={() => window.chrome?.webview?.postMessage({ command: 'exportPdf' })}
+                     className="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-md shadow-sm transition-colors flex items-center gap-2"
+                     title="PDF Olarak Çıktı Al"
+                   >
+                     📄 PDF
+                   </button>
+                   <button 
+                     onClick={() => window.chrome?.webview?.postMessage({ command: 'exportExcel' })}
+                     className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2 px-4 rounded-md shadow-sm transition-colors flex items-center gap-2"
+                     title="Excel (CSV) Olarak Çıktı Al"
+                   >
+                     📊 Excel
+                   </button>
+                 </div>
               </div>
-              <span className="text-sm font-semibold bg-slate-200 text-slate-800 px-3 py-1 rounded-full border border-slate-300">
-                Girdi: {visibleData.length} Dizin
-              </span>
+              
+              {/* Sağ Taraf: Alt Klasör Toggle ve Bilgi Etiketi */}
+              <div className="flex items-center gap-3">
+                 <button 
+                   onClick={() => setShowSubfolders(!showSubfolders)}
+                   className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-4 rounded-md shadow-sm transition-colors text-sm"
+                   title="Alt klasörleri gizle / göster"
+                 >
+                   {showSubfolders ? (
+                     <><span>📂</span> Alt Klasörleri Gizle</>
+                   ) : (
+                     <><span>📁</span> Alt Klasörleri Göster</>
+                   )}
+                 </button>
+                 <span className="text-sm font-semibold bg-slate-200 text-slate-800 px-4 py-2 rounded-md border border-slate-300 flex items-center shadow-sm">
+                   Girdi: {visibleData.length} Dizin
+                 </span>
+              </div>
             </div>
             
             {/* Ara Başlıklar (Header) */}
