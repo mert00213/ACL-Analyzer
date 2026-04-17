@@ -29,9 +29,11 @@ partial class Form1
     private void InitializeComponent()
     {
         this.components = new System.ComponentModel.Container();
+        this.Text = "Ern Holding | ACL Security Auditor Pro - WebView2";
+        this.ClientSize = new System.Drawing.Size(1400, 950);
+        this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
+        this.BackColor = System.Drawing.Color.FromArgb(248, 250, 252);
         this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-        this.ClientSize = new System.Drawing.Size(800, 450);
-        this.Text = "Form1";
     }
 
     #endregion
