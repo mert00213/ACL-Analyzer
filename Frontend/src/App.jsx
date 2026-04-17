@@ -3,8 +3,6 @@ import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import ProjectCard from './components/ProjectCard'
 import WeeklySummary from './components/WeeklySummary'
-import RecentActivity from './components/RecentActivity'
-import Deadlines from './components/Deadlines'
 import './App.css'
 
 function App() {
@@ -77,17 +75,6 @@ function App() {
             />
             {/* Sağ üstteki yeşil özet kartı */}
             <WeeklySummary data={scanData} />
-          </div>
-
-          {/* Alt Sıra - Aktivite Logları ve Detaylar */}
-          <div className="grid grid-cols-3 gap-6">
-            <div className="col-span-2">
-              {/* C# tarafından gelen canlı verileri buraya gönderiyoruz */}
-              <RecentActivity activities={scanData.details} />
-            </div>
-            <div>
-              <Deadlines />
-            </div>
           </div>
         </div>
       </div>

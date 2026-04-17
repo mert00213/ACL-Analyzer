@@ -1,13 +1,4 @@
 import React from 'react';
-import {
-  LayoutList,
-  FolderOpen,
-  Users,
-  FileText,
-  Settings,
-  HelpCircle,
-  Plus,
-} from 'lucide-react';
 
 export default function Sidebar() {
   return (
@@ -34,41 +25,8 @@ export default function Sidebar() {
 >
   Klasör Tara
 </button>
-      {/* Main Navigation */}
-      <nav className="space-y-2 flex-1">
-        <div className="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-300 hover:bg-teal-700 cursor-pointer transition">
-          <LayoutList size={20} />
-          <span>Tasks</span>
-        </div>
-        
-        <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-teal-600 text-white cursor-pointer transition">
-          <FolderOpen size={20} />
-          <span>Projects</span>
-        </div>
-        
-        <div className="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-300 hover:bg-teal-700 cursor-pointer transition">
-          <Users size={20} />
-          <span>Team</span>
-        </div>
-        
-        <div className="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-300 hover:bg-teal-700 cursor-pointer transition">
-          <FileText size={20} />
-          <span>Reports</span>
-        </div>
-      </nav>
-
-      {/* Bottom Navigation */}
-      <nav className="space-y-2 border-t border-teal-600 pt-6">
-        <div className="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-300 hover:bg-teal-700 cursor-pointer transition">
-          <Settings size={20} />
-          <span>Settings</span>
-        </div>
-        
-        <div className="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-300 hover:bg-teal-700 cursor-pointer transition">
-          <HelpCircle size={20} />
-          <span>Support</span>
-        </div>
-      </nav>
+      {/* Spacer */}
+      <div className="flex-1"></div>
     </div>
   );
 }

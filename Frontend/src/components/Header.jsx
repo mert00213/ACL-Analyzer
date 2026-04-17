@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Bell, User } from 'lucide-react';
+import { Search } from 'lucide-react';
 
 export default function Header() {
   return (
@@ -15,17 +15,6 @@ export default function Header() {
             placeholder="Arama yap..."
             className="bg-transparent ml-2 outline-none w-full text-slate-700 placeholder-slate-500"
           />
-        </div>
-
-        {/* Notification Bell */}
-        <div className="relative cursor-pointer">
-          <Bell size={20} className="text-slate-600" />
-          <span className="absolute top-0 right-0 h-2 w-2 bg-red-500 rounded-full"></span>
-        </div>
-
-        {/* User Avatar */}
-        <div className="h-10 w-10 rounded-full bg-slate-300 flex items-center justify-center cursor-pointer">
-          <User size={20} className="text-slate-600" />
         </div>
       </div>
     </div>
