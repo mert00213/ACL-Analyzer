@@ -209,7 +209,7 @@ function App() {
                                             <span className={`font-semibold ${isRisky ? 'text-red-700' : 'text-slate-700'}`}>{p.user || '-'}</span>
                                         </div>
                                         <div className="flex items-center gap-4">
-                                            <span className={`text-xs font-bold px-2 py-1 rounded bg-opacity-10 ${isRisky ? 'text-red-600 bg-red-600' : 'text-emerald-700 bg-emerald-700'}`}>
+                                            <span className={`flex items-center justify-center text-[10px] font-semibold uppercase text-white px-2 py-1 rounded min-w-[80px] ${isRisky ? 'bg-red-600' : 'bg-emerald-600'}`}>
                                                 {p.perm || '-'}
                                             </span>
                                             <div className="w-6 text-center text-slate-400 text-lg" title="Miras Alınmış Yetki">
