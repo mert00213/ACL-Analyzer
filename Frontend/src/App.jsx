@@ -109,50 +109,49 @@ function App() {
           {/* YETKİ DETAYLARI LİSTESİ (AĞAÇ GÖRÜNÜMÜ) - TAM EKRAN */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col flex-1 h-full min-h-0">
             {/* Araç Çubuğu */}
-            <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-              {/* Sol Taraf: Yol Gösterge ve Seç Butonu */}
-              <div className="flex items-center gap-4">
-                 <div className="relative w-96 shadow-sm rounded-md">
+            <div className="p-5 border-b border-slate-200 flex flex-col gap-4 bg-slate-50">
+              {/* Üst Satır: Yol Gösterge ve Seç Butonu */}
+              <div className="flex items-center gap-3">
+                 <div className="relative flex-1 shadow-sm rounded-md">
                     <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">📂</span>
                     <input 
                       type="text" 
                       readOnly 
                       value={commonPath} 
                       placeholder="C:\OrtakAlan\USG" 
-                      className="pl-10 pr-4 py-2 w-full border border-slate-300 rounded-md bg-white text-slate-700 font-medium focus:outline-none"
+                      className="pl-10 pr-4 h-10 w-full border border-slate-300 rounded-md bg-white text-slate-700 font-medium focus:outline-none"
                     />
                  </div>
                  <button 
                    onClick={handleScanFolder}
-                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-6 rounded-md shadow transition-colors"
+                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-10 px-6 rounded-md shadow transition-colors flex items-center justify-center"
                  >
                    Seç
                  </button>
-                 
-                 {/* Dışa Aktar Butonları */}
-                 <div className="flex items-center gap-2 ml-2 border-l border-slate-300 pl-4">
-                   <button 
-                     onClick={() => window.chrome?.webview?.postMessage({ command: 'exportPdf' })}
-                     className="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-md shadow-sm transition-colors flex items-center gap-2"
-                     title="PDF Olarak Çıktı Al"
-                   >
-                     📄 PDF
-                   </button>
-                   <button 
-                     onClick={() => window.chrome?.webview?.postMessage({ command: 'exportExcel' })}
-                     className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2 px-4 rounded-md shadow-sm transition-colors flex items-center gap-2"
-                     title="Excel (CSV) Olarak Çıktı Al"
-                   >
-                     📊 Excel
-                   </button>
-                 </div>
               </div>
               
-              {/* Sağ Taraf: Alt Klasör Toggle ve Bilgi Etiketi */}
+              {/* Alt Satır: Aksiyon ve Bilgi Butonları (PDF, Excel, Alt Klasör, Girdi) */}
               <div className="flex items-center gap-3">
                  <button 
+                   onClick={() => window.chrome?.webview?.postMessage({ command: 'exportPdf' })}
+                   className="bg-red-500 hover:bg-red-600 text-white font-semibold h-10 px-4 rounded-md shadow-sm transition-colors flex items-center justify-center gap-2"
+                   title="PDF Olarak Çıktı Al"
+                 >
+                   📄 PDF
+                 </button>
+                 <button 
+                   onClick={() => window.chrome?.webview?.postMessage({ command: 'exportExcel' })}
+                   className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold h-10 px-4 rounded-md shadow-sm transition-colors flex items-center justify-center gap-2"
+                   title="Excel (CSV) Olarak Çıktı Al"
+                 >
+                   📊 Excel
+                 </button>
+                 
+                 <div className="h-6 w-[1px] bg-slate-300 mx-1 hidden sm:block"></div> {/* Ayırıcı Çizgi */}
+                 
+                 <button 
                    onClick={() => setShowSubfolders(!showSubfolders)}
-                   className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-4 rounded-md shadow-sm transition-colors text-sm"
+                   className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold h-10 px-4 rounded-md shadow-sm transition-colors text-sm"
                    title="Alt klasörleri gizle / göster"
                  >
                    {showSubfolders ? (
@@ -161,7 +160,7 @@ function App() {
                      <><span>📁</span> Alt Klasörleri Göster</>
                    )}
                  </button>
-                 <span className="text-sm font-semibold bg-slate-200 text-slate-800 px-4 py-2 rounded-md border border-slate-300 flex items-center shadow-sm">
+                 <span className="text-sm font-semibold bg-slate-200 text-slate-800 px-4 h-10 rounded-md border border-slate-300 flex items-center justify-center shadow-sm whitespace-nowrap">
                    Girdi: {visibleData.length} Dizin
                  </span>
               </div>
