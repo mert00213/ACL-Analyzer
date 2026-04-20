@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function Sidebar() {
+export default function Sidebar({ onLogout }) {
   const handleScanFolder = () => {
     console.log('🔴 Butona tıklandı!');
     
@@ -50,20 +50,17 @@ export default function Sidebar() {
       <div className="flex-1"></div>
 
       {/* Footer / Çıkış */}
-      <div>
+      <div className="mt-auto">
         <button
-          onClick={() => {
-             if (window.chrome && window.chrome.webview) {
-               window.chrome.webview.postMessage({ command: "exitApp" });
-             } else {
-                 console.warn("Tarayıcıda çıkış yapıldı.");
-             }
-          }}
-          className="w-full border border-red-500/50 hover:bg-red-500 hover:text-white text-red-200 font-medium py-2.5 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
+          onClick={onLogout}
+          className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-slate-300 hover:text-red-500 hover:bg-white/10 transition-colors duration-200 font-medium group"
         >
-          🚪 Çıkış Yap
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-300 group-hover:text-red-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+          Çıkış Yap
         </button>
-        <div className="text-center mt-3 text-white/40 text-xs font-medium tracking-wider">
+        <div className="text-center mt-3 text-slate-500 text-[10px] font-medium tracking-wider">
           v1.0.1
         </div>
       </div>

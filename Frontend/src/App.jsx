@@ -13,6 +13,7 @@ function App() {
   });
 
   const [showSubfolders, setShowSubfolders] = useState(true);
+  const [isExitModalOpen, setIsExitModalOpen] = useState(false);
 
   // Ortak kök dizini bulmak için yardımcı fonksiyon
   const getCommonPath = (details) => {
@@ -99,7 +100,7 @@ function App() {
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 font-sans">
-      <Sidebar />
+      <Sidebar onLogout={() => setIsExitModalOpen(true)} />
 
       <div className="flex-1 flex flex-col overflow-auto">
         <Header />
@@ -235,6 +236,53 @@ function App() {
 
         </div>
       </div>
+
+      {/* Corporate Exit Approval Modal */}
+      {isExitModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm transition-opacity">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden transform transition-all">
+            {/* Header */}
+            <div className="bg-[#00584E] px-6 py-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-white/90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Uygulamadan Çıkılsın mı?
+              </h3>
+            </div>
+            
+            {/* Body */}
+            <div className="px-6 py-6 bg-slate-50">
+              <p className="text-slate-600 font-medium text-[15px] leading-relaxed">
+                Yapılmamış işlemleriniz kaybolabilir. Çıkmak istediğinize emin misiniz?
+              </p>
+            </div>
+            
+            {/* Footer Buttons */}
+            <div className="px-6 py-4 bg-white border-t border-slate-100 flex justify-end gap-3 rounded-b-xl">
+              <button
+                onClick={() => setIsExitModalOpen(false)}
+                className="px-5 py-2.5 rounded-lg text-slate-600 hover:bg-slate-100 font-semibold transition-colors border border-slate-200 shadow-sm"
+              >
+                Vazgeç
+              </button>
+              <button
+                onClick={() => {
+                  setIsExitModalOpen(false);
+                  if (window.chrome && window.chrome.webview) {
+                    window.chrome.webview.postMessage({ command: "exitApp" });
+                  } else {
+                    window.close();
+                  }
+                }}
+                className="px-5 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-semibold transition-colors shadow-sm shadow-red-500/30 flex items-center gap-2"
+              >
+                Evet, Çık
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
