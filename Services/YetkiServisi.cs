@@ -17,13 +17,53 @@ public class YetkiServisi
         return yetkiListesi;
     }
 
-    // Yeni Sistem: Sadece tıklanan klasörün yetkisini anında getirir
+    // Yeni Sistem: Tıklanan klasörün ve alt klasörlerinin yetkisini güvenle getirir
     public List<YetkiRaporu> TekilYetkiGetir(string yol)
     {
         var liste = new List<YetkiRaporu>();
         bool klasorMu = Directory.Exists(yol);
+        
+        // 1. Ana klasörün kendisini (veya tekil dosyayı) okur
         DiziniVeyaDosyayiTara(yol, liste, klasorMu);
+
+        // 2. Alt klasörleri güvenli bir şekilde tarar
+        if (klasorMu)
+        {
+            GuvenliAltKlasorTara(yol, liste);
+        }
+
         return liste;
+    }
+
+    /// <summary>
+    /// SearchOption.AllDirectories kullanımı erişim olmayan klasörlerde (UnauthorizedAccessException) 
+    /// tüm taramayı durduracağı için, bu işlemi manuel recursive ve try-catch bloklarıyla yapıyoruz.
+    /// Böylece ulaşılamayan bir klasör olduğunda sadece o klasör atlanır, tarama devam eder.
+    /// </summary>
+    private void GuvenliAltKlasorTara(string mevcutYol, List<YetkiRaporu> liste)
+    {
+        try
+        {
+            // Sadece bu seviyedeki klasörleri alır
+            string[] altKlasorler = Directory.GetDirectories(mevcutYol);
+            
+            foreach (string altYol in altKlasorler)
+            {
+                // Alt klasörün yetkisini oku
+                DiziniVeyaDosyayiTara(altYol, liste, true);
+                
+                // İçeriye doğru rekürsif olarak devam et
+                GuvenliAltKlasorTara(altYol, liste);
+            }
+        }
+        catch (UnauthorizedAccessException) 
+        { 
+            // Erişim izni olmayan klasörü atla, sistemi çökertme
+        }
+        catch (Exception) 
+        { 
+            // Diğer disk okuma hatalarını atla
+        }
     }
 
     private void DerinlemesineTara(string mevcutYol, List<YetkiRaporu> liste)
