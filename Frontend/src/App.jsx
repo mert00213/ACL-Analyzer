@@ -79,6 +79,18 @@ function App() {
     }
   };
 
+  const handleClear = () => {
+    setScanData({
+      totalFiles: 0,
+      criticalFound: 0,
+      scanDate: '-',
+      details: []
+    });
+    setSearchTerm('');
+    setIsExitModalOpen(false);
+    setIsPermissionModalOpen(false);
+  };
+
   useEffect(() => {
     const handleBackendMessage = (event) => {
       const { type, data } = event.detail;
@@ -146,6 +158,13 @@ function App() {
                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-10 px-6 rounded-md shadow transition-colors flex items-center justify-center"
                 >
                   Seç
+                </button>
+                <button
+                  onClick={handleClear}
+                  className="bg-slate-200 hover:bg-slate-300 text-slate-700 border border-slate-300 font-bold h-10 px-4 rounded-md shadow-sm transition-colors flex items-center justify-center gap-2"
+                  title="Ekranı Temizle"
+                >
+                  <span className="text-lg">🧹</span> Temizle
                 </button>
               </div>
 
