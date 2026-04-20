@@ -25,6 +25,7 @@ public partial class Form1 : Form
 
     public Form1()
     {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         _yetkiServisi = new YetkiServisi();
         InitializeComponent();
         this.Text = "Ern Enerji | Yetki Analiz Sistemi";
@@ -215,6 +216,7 @@ public partial class Form1 : Form
                     System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = filePath, UseShellExecute = true });
                 }
                 catch (Exception ex) {
+                    MessageBox.Show("PDF oluşturulurken bir hata oluştu:\n\n" + ex.Message, "PDF Hatası", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     SendMessageToFrontend("error", "PDF oluşturulurken hata: " + ex.Message);
                 }
             }
