@@ -9,29 +9,30 @@ function App() {
     totalFiles: 0,
     criticalFound: 0,
     scanDate: '-',
-    details: [] // TABLO İÇİN GEREKEN VERİ BURADA!
+    details: []
   });
 
   const [showSubfolders, setShowSubfolders] = useState(true);
   const [isExitModalOpen, setIsExitModalOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Ortak kök dizini bulmak için yardımcı fonksiyon
   const getCommonPath = (details) => {
-      if (!details || details.length === 0) return '';
-      const paths = details.map(d => d.path);
-      const splitPaths = paths.map(p => p.split('\\').filter(Boolean));
-      if (splitPaths.length === 0) return '';
-      let common = [];
-      let minLen = Math.min(...splitPaths.map(p => p.length));
-      for (let i = 0; i < minLen; i++) {
-          const val = splitPaths[0][i];
-          if (splitPaths.every(p => p[i] === val)) {
-              common.push(val);
-          } else {
-              break;
-          }
+    if (!details || details.length === 0) return '';
+    const paths = details.map(d => d.path);
+    const splitPaths = paths.map(p => p.split('\\').filter(Boolean));
+    if (splitPaths.length === 0) return '';
+    let common = [];
+    let minLen = Math.min(...splitPaths.map(p => p.length));
+    for (let i = 0; i < minLen; i++) {
+      const val = splitPaths[0][i];
+      if (splitPaths.every(p => p[i] === val)) {
+        common.push(val);
+      } else {
+        break;
       }
-      return common.length > 0 ? common.join('\\') + '\\' : '';
+    }
+    return common.length > 0 ? common.join('\\') + '\\' : '';
   };
 
   const commonPath = useMemo(() => getCommonPath(scanData.details), [scanData.details]);
@@ -39,7 +40,7 @@ function App() {
   // Klasörleri gruplamak ve ağaç yapısını oluşturmak için Data manipülasyonu
   const groupedData = useMemo(() => {
     if (!scanData.details) return [];
-    
+
     const map = new Map();
     scanData.details.forEach(item => {
       if (!map.has(item.path)) {
@@ -47,7 +48,7 @@ function App() {
       }
       map.get(item.path).permissions.push({ user: item.user, perm: item.perm, isInherited: item.isInherited });
     });
-    
+
     let result = Array.from(map.values());
     result.sort((a, b) => a.path.localeCompare(b.path));
     return result;
@@ -66,9 +67,9 @@ function App() {
 
   const handleScanFolder = () => {
     if (window.chrome && window.chrome.webview) {
-        window.chrome.webview.postMessage({ command: "scanFolder", data: { path: "C:\\"} });
+      window.chrome.webview.postMessage({ command: "scanFolder", data: { path: "C:\\" } });
     } else {
-        alert("Bu özellik yalnızca uygulamanın (WebView2) içindeyken çalışır.");
+      alert("Bu özellik yalnızca uygulamanın (WebView2) içindeyken çalışır.");
     }
   };
 
@@ -98,12 +99,24 @@ function App() {
     return () => window.removeEventListener('backendMessage', handleBackendMessage);
   }, []);
 
+  // Ekrana basılan veriden hemen önce arama filtresi uygulaması (Klasör bazında)
+  const filteredData = visibleData.filter(folder => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+
+    return folder.path.toLowerCase().includes(term) ||
+      folder.permissions.some(p =>
+        (p.user && p.user.toLowerCase().includes(term)) ||
+        (p.perm && p.perm.toLowerCase().includes(term))
+      );
+  });
+
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 font-sans">
       <Sidebar onLogout={() => setIsExitModalOpen(true)} />
 
       <div className="flex-1 flex flex-col overflow-auto">
-        <Header />
+        <Header searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
 
         <div className="p-8 flex-1 overflow-auto">
           {/* YETKİ DETAYLARI LİSTESİ (AĞAÇ GÖRÜNÜMÜ) - TAM EKRAN */}
@@ -112,124 +125,142 @@ function App() {
             <div className="p-5 border-b border-slate-200 flex flex-col gap-4 bg-slate-50">
               {/* Üst Satır: Yol Gösterge ve Seç Butonu */}
               <div className="flex items-center gap-3">
-                 <div className="relative flex-1 shadow-sm rounded-md">
-                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">📂</span>
-                    <input 
-                      type="text" 
-                      readOnly 
-                      value={commonPath} 
-                      placeholder="C:\OrtakAlan\USG" 
-                      className="pl-10 pr-4 h-10 w-full border border-slate-300 rounded-md bg-white text-slate-700 font-medium focus:outline-none"
-                    />
-                 </div>
-                 <button 
-                   onClick={handleScanFolder}
-                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-10 px-6 rounded-md shadow transition-colors flex items-center justify-center"
-                 >
-                   Seç
-                 </button>
+                <div className="relative flex-1 shadow-sm rounded-md">
+                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">📂</span>
+                  <input
+                    type="text"
+                    readOnly
+                    value={commonPath}
+                    placeholder="C:\OrtakAlan\USG"
+                    className="pl-10 pr-4 h-10 w-full border border-slate-300 rounded-md bg-white text-slate-700 font-medium focus:outline-none"
+                  />
+                </div>
+                <button
+                  onClick={handleScanFolder}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-10 px-6 rounded-md shadow transition-colors flex items-center justify-center"
+                >
+                  Seç
+                </button>
               </div>
-              
+
               {/* Alt Satır: Aksiyon ve Bilgi Butonları (PDF, Excel, Alt Klasör, Girdi) */}
               <div className="flex items-center gap-3">
-                 <button 
-                   onClick={() => window.chrome?.webview?.postMessage({ command: 'exportPdf' })}
-                   className="bg-red-500 hover:bg-red-600 text-white font-semibold h-10 px-4 rounded-md shadow-sm transition-colors flex items-center justify-center gap-2"
-                   title="PDF Olarak Çıktı Al"
-                 >
-                   📄 PDF
-                 </button>
-                 <button 
-                   onClick={() => window.chrome?.webview?.postMessage({ command: 'exportExcel' })}
-                   className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold h-10 px-4 rounded-md shadow-sm transition-colors flex items-center justify-center gap-2"
-                   title="Excel (CSV) Olarak Çıktı Al"
-                 >
-                   📊 Excel
-                 </button>
-                 
-                 <div className="h-6 w-[1px] bg-slate-300 mx-1 hidden sm:block"></div> {/* Ayırıcı Çizgi */}
-                 
-                 <button 
-                   onClick={() => setShowSubfolders(!showSubfolders)}
-                   className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold h-10 px-4 rounded-md shadow-sm transition-colors text-sm"
-                   title="Alt klasörleri gizle / göster"
-                 >
-                   {showSubfolders ? (
-                     <><span>📂</span> Alt Klasörleri Gizle</>
-                   ) : (
-                     <><span>📁</span> Alt Klasörleri Göster</>
-                   )}
-                 </button>
-                 <span className="text-sm font-semibold bg-slate-200 text-slate-800 px-4 h-10 rounded-md border border-slate-300 flex items-center justify-center shadow-sm whitespace-nowrap">
-                   Girdi: {visibleData.length} Dizin
-                 </span>
+                <button
+                  onClick={() => window.chrome?.webview?.postMessage({ command: 'exportPdf' })}
+                  className="bg-red-500 hover:bg-red-600 text-white font-semibold h-10 px-4 rounded-md shadow-sm transition-colors flex items-center justify-center gap-2"
+                  title="PDF Olarak Çıktı Al"
+                >
+                  📄 PDF
+                </button>
+                <button
+                  onClick={() => window.chrome?.webview?.postMessage({ command: 'exportExcel' })}
+                  className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold h-10 px-4 rounded-md shadow-sm transition-colors flex items-center justify-center gap-2"
+                  title="Excel (CSV) Olarak Çıktı Al"
+                >
+                  📊 Excel
+                </button>
+
+                <div className="h-6 w-[1px] bg-slate-300 mx-1 hidden sm:block"></div> {/* Ayırıcı Çizgi */}
+
+                <button
+                  onClick={() => setShowSubfolders(!showSubfolders)}
+                  className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold h-10 px-4 rounded-md shadow-sm transition-colors text-sm"
+                  title="Alt klasörleri gizle / göster"
+                >
+                  {showSubfolders ? (
+                    <><span>📂</span> Alt Klasörleri Gizle</>
+                  ) : (
+                    <><span>📁</span> Alt Klasörleri Göster</>
+                  )}
+                </button>
+                <span className="text-sm font-semibold bg-slate-200 text-slate-800 px-4 h-10 rounded-md border border-slate-300 flex items-center justify-center shadow-sm whitespace-nowrap">
+                  Girdi: {visibleData.length} Dizin
+                </span>
               </div>
             </div>
-            
+
             {/* Ara Başlıklar (Header) */}
             <div className="flex bg-slate-800 text-white sticky top-0 z-10 border-b border-slate-600">
-               <div className="w-1/2 p-3 pl-6 font-semibold uppercase text-xs tracking-widest">Klasör Yapısı</div>
-               <div className="w-1/2 p-3 pl-6 font-semibold uppercase text-xs tracking-widest border-l border-slate-600">İzinli Kullanıcı Kısmı (R/W)</div>
+              <div className="w-1/2 p-3 pl-6 font-semibold uppercase text-xs tracking-widest">Klasör Yapısı</div>
+              <div className="w-1/2 p-3 pl-6 font-semibold uppercase text-xs tracking-widest border-l border-slate-600">İzinli Kullanıcı Kısmı (R/W)</div>
             </div>
 
             <div className="flex-1 overflow-y-auto bg-white p-0">
-               <div className="divide-y divide-slate-100">
-                  {visibleData && visibleData.length > 0 ? (
-                    visibleData.map((folder, index) => {
+              <div className="divide-y divide-slate-100">
+                {visibleData && visibleData.length > 0 ? (
+                  filteredData.length > 0 ? (
+                    filteredData.map((folder, index) => {
                       const parts = folder.path.split('\\').filter(Boolean);
                       const name = parts[parts.length - 1];
                       const depth = parts.length;
                       const indent = baseDepth > 0 ? Math.max(0, depth - baseDepth) : 0;
-                      
+
                       return (
                         <div key={index} className="flex hover:bg-slate-50 transition-colors">
-                           {/* Sol Sütun: Ağaç Yapısı */}
-                           <div className="w-1/2 p-4 text-slate-700 border-r border-slate-100 flex flex-col justify-center" title={folder.path}>
-                              <div style={{ marginLeft: `${indent * 28}px` }} className="flex items-center gap-2">
-                                  {indent === 0 ? (
-                                    <span className="text-emerald-500 drop-shadow flex-shrink-0">▶</span>
-                                  ) : (
-                                    <span className="text-slate-300 flex-shrink-0 font-bold ml-1">└─▶</span>
-                                  )}
-                                  <span className={`truncate ${indent === 0 ? 'font-bold text-slate-800' : 'font-medium text-slate-600'}`}>
-                                    📂 {name || folder.path}
-                                  </span>
-                              </div>
-                           </div>
-                           
-                           {/* Sağ Sütun: Kullanıcılar */}
-                           <div className="w-1/2 p-3 flex flex-col gap-2">
-                              {folder.permissions.map((p, i) => {
-                                  const isRisky = (p.user || '').includes('Everyone') || (p.perm || '').includes('Full');
-                                  return (
-                                    <div key={i} className={`flex items-center justify-between px-4 py-2 rounded-lg border shadow-sm ${isRisky ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
-                                        <div className="flex items-center gap-2">
-                                            <span>{isRisky ? '⚠️' : '👤'}</span>
-                                            <span className={`font-semibold ${isRisky ? 'text-red-700' : 'text-slate-700'}`}>{p.user || '-'}</span>
-                                        </div>
-                                        <div className="flex items-center gap-4">
-                                            <span className={`flex items-center justify-center text-[10px] font-semibold uppercase text-white px-2 py-1 rounded min-w-[80px] ${isRisky ? 'bg-red-600' : 'bg-emerald-600'}`}>
-                                                {p.perm || '-'}
-                                            </span>
-                                            <div className="w-6 text-center text-slate-400 text-lg" title="Miras Alınmış Yetki">
-                                                {(p.isInherited === "Evet" || p.isInherited === true) ? "🔄" : "-"}
-                                            </div>
-                                        </div>
+                          {/* Sol Sütun: Ağaç Yapısı */}
+                          <div className="w-1/2 p-4 text-slate-700 border-r border-slate-100 flex flex-col justify-center" title={folder.path}>
+                            <div style={{ marginLeft: `${indent * 28}px` }} className="flex items-center gap-2">
+                              {indent === 0 ? (
+                                <span className="text-emerald-500 drop-shadow flex-shrink-0">▶</span>
+                              ) : (
+                                <span className="text-slate-300 flex-shrink-0 font-bold ml-1">└─▶</span>
+                              )}
+                              <span className={`truncate ${indent === 0 ? 'font-bold text-slate-800' : 'font-medium text-slate-600'}`}>
+                                📂 {name || folder.path}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Sağ Sütun: Kullanıcılar */}
+                          <div className="w-1/2 p-3 flex flex-col gap-2">
+                            {/* İŞTE SİHİR BURADA: Kullanıcıları da ekrana basmadan önce arama kelimesine göre filtreleniyor */}
+                            {folder.permissions
+                              .filter(p => {
+                                if (!searchTerm) return true;
+                                const term = searchTerm.toLowerCase();
+                                // Eğer klasör adını aradıysa herkesi göster, yoksa sadece aranan kişiyi göster
+                                if (folder.path.toLowerCase().includes(term)) return true;
+                                return (p.user && p.user.toLowerCase().includes(term)) ||
+                                  (p.perm && p.perm.toLowerCase().includes(term));
+                              })
+                              .map((p, i) => {
+                                const isRisky = (p.user || '').includes('Everyone') || (p.perm || '').includes('Full');
+                                return (
+                                  <div key={i} className={`flex items-center justify-between px-4 py-2 rounded-lg border shadow-sm ${isRisky ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
+                                    <div className="flex items-center gap-2">
+                                      <span>{isRisky ? '⚠️' : '👤'}</span>
+                                      <span className={`font-semibold ${isRisky ? 'text-red-700' : 'text-slate-700'}`}>{p.user || '-'}</span>
                                     </div>
-                                  );
+                                    <div className="flex items-center gap-4">
+                                      <span className={`flex items-center justify-center text-[10px] font-semibold uppercase text-white px-2 py-1 rounded min-w-[80px] ${isRisky ? 'bg-red-600' : 'bg-emerald-600'}`}>
+                                        {p.perm || '-'}
+                                      </span>
+                                      <div className="w-6 text-center text-slate-400 text-lg" title="Miras Alınmış Yetki">
+                                        {(p.isInherited === "Evet" || p.isInherited === true) ? "🔄" : "-"}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
                               })}
-                           </div>
+                          </div>
                         </div>
                       );
                     })
                   ) : (
                     <div className="p-16 text-center">
-                      <div className="text-5xl opacity-20 mb-4">📂</div>
-                      <p className="text-slate-500 font-medium">Listelenecek yetki klasörü bulunamadı.</p>
-                      <p className="text-sm text-slate-400 mt-1">Lütfen "Seç" butonunu kullanarak tarama başlatın.</p>
+                      <div className="text-5xl opacity-20 mb-4">🔍</div>
+                      <p className="text-slate-600 font-semibold text-lg">Sonuç bulunamadı</p>
+                      <p className="text-sm text-slate-400 mt-1">Arama kriterlerinize uygun "\b{searchTerm}\b" kaydı eşleşmedi.</p>
                     </div>
-                  )}
-               </div>
+                  )
+                ) : (
+                  <div className="p-16 text-center">
+                    <div className="text-5xl opacity-20 mb-4">📂</div>
+                    <p className="text-slate-500 font-medium">Listelenecek yetki klasörü bulunamadı.</p>
+                    <p className="text-sm text-slate-400 mt-1">Lütfen "Seç" butonunu kullanarak tarama başlatın.</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -249,14 +280,14 @@ function App() {
                 Uygulamadan Çıkılsın mı?
               </h3>
             </div>
-            
+
             {/* Body */}
             <div className="px-6 py-6 bg-slate-50">
               <p className="text-slate-600 font-medium text-[15px] leading-relaxed">
                 Yapılmamış işlemleriniz kaybolabilir. Çıkmak istediğinize emin misiniz?
               </p>
             </div>
-            
+
             {/* Footer Buttons */}
             <div className="px-6 py-4 bg-white border-t border-slate-100 flex justify-end gap-3 rounded-b-xl">
               <button

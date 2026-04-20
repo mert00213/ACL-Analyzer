@@ -1,7 +1,7 @@
 import React from 'react';
 import { Search } from 'lucide-react';
 
-export default function Header() {
+export default function Header({ searchTerm, setSearchTerm }) {
   return (
     <div className="bg-white border-b border-slate-200 px-8 py-6 flex items-center justify-between">
       <h1 className="text-2xl font-bold text-teal-900">Ortak Alan Yetki Analizi</h1>
@@ -14,6 +14,8 @@ export default function Header() {
             type="text"
             placeholder="Arama yap..."
             className="bg-transparent ml-2 outline-none w-full text-slate-700 placeholder-slate-500"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
       </div>
