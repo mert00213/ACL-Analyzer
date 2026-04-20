@@ -15,6 +15,12 @@ function App() {
   const [showSubfolders, setShowSubfolders] = useState(true);
   const [isExitModalOpen, setIsExitModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Permission CRUD States
+  const [isPermissionModalOpen, setIsPermissionModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState('add'); // 'add' or 'edit'
+  const [activeFolder, setActiveFolder] = useState('');
+  const [permissionForm, setPermissionForm] = useState({ oldUser: '', user: '', perm: 'ReadAndExecute' });
 
   // Ortak kök dizini bulmak için yardımcı fonksiyon
   const getCommonPath = (details) => {
@@ -197,17 +203,33 @@ function App() {
 
                       return (
                         <div key={index} className="flex hover:bg-slate-50 transition-colors">
-                          {/* Sol Sütun: Ağaç Yapısı */}
+                          {/* Sol Sütun: Ağaç Yapısı ve Ekle Butonu */}
                           <div className="w-1/2 p-4 text-slate-700 border-r border-slate-100 flex flex-col justify-center" title={folder.path}>
-                            <div style={{ marginLeft: `${indent * 28}px` }} className="flex items-center gap-2">
-                              {indent === 0 ? (
-                                <span className="text-emerald-500 drop-shadow flex-shrink-0">▶</span>
-                              ) : (
-                                <span className="text-slate-300 flex-shrink-0 font-bold ml-1">└─▶</span>
-                              )}
-                              <span className={`truncate ${indent === 0 ? 'font-bold text-slate-800' : 'font-medium text-slate-600'}`}>
-                                📂 {name || folder.path}
-                              </span>
+                            <div style={{ marginLeft: `${indent * 28}px` }} className="flex items-center justify-between gap-2 overflow-hidden pr-2">
+                              <div className="flex items-center gap-2 truncate">
+                                {indent === 0 ? (
+                                  <span className="text-emerald-500 drop-shadow flex-shrink-0">▶</span>
+                                ) : (
+                                  <span className="text-slate-300 flex-shrink-0 font-bold ml-1">└─▶</span>
+                                )}
+                                <span className={`truncate ${indent === 0 ? 'font-bold text-slate-800' : 'font-medium text-slate-600'}`}>
+                                  📂 {name || folder.path}
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  setActiveFolder(folder.path);
+                                  setModalMode('add');
+                                  setPermissionForm({ oldUser: '', user: '', perm: 'ReadAndExecute' });
+                                  setIsPermissionModalOpen(true);
+                                }}
+                                className="bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white p-1.5 rounded flex-shrink-0 transition-colors shadow-sm focus:outline-none border border-emerald-100 hover:border-emerald-500"
+                                title="Yeni Yetki Ekle"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+                                </svg>
+                              </button>
                             </div>
                           </div>
 
@@ -226,17 +248,46 @@ function App() {
                               .map((p, i) => {
                                 const isRisky = (p.user || '').includes('Everyone') || (p.perm || '').includes('Full');
                                 return (
-                                  <div key={i} className={`flex items-center justify-between px-4 py-2 rounded-lg border shadow-sm ${isRisky ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
-                                    <div className="flex items-center gap-2">
+                                  <div key={i} className={`group flex items-center justify-between px-4 py-2 rounded-lg border shadow-sm transition-all hover:shadow-md ${isRisky ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
+                                    <div className="flex items-center gap-2 truncate min-w-0 pr-2">
                                       <span>{isRisky ? '⚠️' : '👤'}</span>
-                                      <span className={`font-semibold ${isRisky ? 'text-red-700' : 'text-slate-700'}`}>{p.user || '-'}</span>
+                                      <span className={`font-semibold truncate ${isRisky ? 'text-red-700' : 'text-slate-700'}`}>{p.user || '-'}</span>
                                     </div>
-                                    <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-3 flex-shrink-0">
                                       <span className={`flex items-center justify-center text-[10px] font-semibold uppercase text-white px-2 py-1 rounded min-w-[80px] ${isRisky ? 'bg-red-600' : 'bg-emerald-600'}`}>
                                         {p.perm || '-'}
                                       </span>
                                       <div className="w-6 text-center text-slate-400 text-lg" title="Miras Alınmış Yetki">
                                         {(p.isInherited === "Evet" || p.isInherited === true) ? "🔄" : "-"}
+                                      </div>
+                                      
+                                      {/* Düzenle / Sil Butonları (Hover ile görünür) */}
+                                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button 
+                                          onClick={() => {
+                                            setActiveFolder(folder.path);
+                                            setModalMode('edit');
+                                            setPermissionForm({ oldUser: p.user, user: p.user, perm: p.perm });
+                                            setIsPermissionModalOpen(true);
+                                          }}
+                                          className="p-1.5 text-blue-500 hover:bg-blue-100 rounded-md transition-colors" title="Yetkiyi Düzenle">
+                                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                          </svg>
+                                        </button>
+                                        <button 
+                                          onClick={() => {
+                                            if(window.confirm(`${p.user} kullanıcısının ${p.perm} yetkisini silmek istediğinize emin misiniz?`)) {
+                                              if (window.chrome && window.chrome.webview) {
+                                                window.chrome.webview.postMessage({ command: 'removePermission', data: { path: folder.path, user: p.user } });
+                                              }
+                                            }
+                                          }}
+                                          className="p-1.5 text-red-500 hover:bg-red-100 rounded-md transition-colors" title="Yetkiyi Sil">
+                                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                          </svg>
+                                        </button>
                                       </div>
                                     </div>
                                   </div>
@@ -308,6 +359,134 @@ function App() {
                 className="px-5 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-semibold transition-colors shadow-sm shadow-red-500/30 flex items-center gap-2"
               >
                 Evet, Çık
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Permission Add/Edit Modal */}
+      {isPermissionModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm transition-opacity">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden transform transition-all">
+            {/* Header */}
+            <div className={`px-6 py-4 flex items-center justify-between ${modalMode === 'add' ? 'bg-[#00584E]' : 'bg-slate-800'}`}>
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                {modalMode === 'add' ? (
+                  <>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-white/90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Yeni Yetki Ekle
+                  </>
+                ) : (
+                  <>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-white/90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                    Yetkiyi Düzenle
+                  </>
+                )}
+              </h3>
+              <button 
+                onClick={() => setIsPermissionModalOpen(false)}
+                className="text-white/70 hover:text-white transition-colors focus:outline-none"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-6 bg-slate-50 flex flex-col gap-5">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Klasör Yolu</label>
+                <div className="bg-slate-100 border border-slate-200 rounded-md px-3 py-2 text-slate-500 text-sm break-all font-mono">
+                  {activeFolder}
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Kullanıcı Adı / Grup</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </div>
+                  <input 
+                    type="text" 
+                    autoFocus
+                    placeholder="Örn: ERN\Mert" 
+                    value={permissionForm.user}
+                    onChange={(e) => setPermissionForm({ ...permissionForm, user: e.target.value })}
+                    className="w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-lg text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all font-medium bg-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Yetki Seviyesi</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    </svg>
+                  </div>
+                  <select 
+                    value={permissionForm.perm}
+                    onChange={(e) => setPermissionForm({ ...permissionForm, perm: e.target.value })}
+                    className="w-full pl-10 pr-10 py-2.5 border border-slate-300 rounded-lg text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 appearance-none font-medium cursor-pointer"
+                  >
+                    <option value="FullControl">FullControl (Tam Yetki)</option>
+                    <option value="Modify">Modify (Değiştirme)</option>
+                    <option value="ReadAndExecute">ReadAndExecute (Okuma ve Çalıştırma)</option>
+                    <option value="Write">Write (Yazma)</option>
+                    <option value="Read">Read (Okuma Yalnızca)</option>
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
+                    <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="px-6 py-4 bg-white border-t border-slate-100 flex justify-end gap-3 rounded-b-xl">
+              <button
+                onClick={() => setIsPermissionModalOpen(false)}
+                className="px-5 py-2.5 rounded-lg text-slate-600 hover:bg-slate-100 font-semibold transition-colors border border-slate-200 shadow-sm"
+              >
+                İptal
+              </button>
+              <button
+                disabled={!permissionForm.user.trim()}
+                onClick={() => {
+                  if (window.chrome && window.chrome.webview) {
+                    if (modalMode === 'add') {
+                      window.chrome.webview.postMessage({ 
+                        command: 'addPermission', 
+                        data: { path: activeFolder, user: permissionForm.user.trim(), perm: permissionForm.perm } 
+                      });
+                    } else {
+                      window.chrome.webview.postMessage({ 
+                        command: 'editPermission', 
+                        data: { path: activeFolder, oldUser: permissionForm.oldUser, newUser: permissionForm.user.trim(), perm: permissionForm.perm } 
+                      });
+                    }
+                  }
+                  setIsPermissionModalOpen(false);
+                }}
+                className={`px-5 py-2.5 rounded-lg text-white font-semibold transition-colors shadow-sm flex items-center gap-2 ${
+                  !permissionForm.user.trim() 
+                    ? 'bg-slate-300 cursor-not-allowed shadow-none' 
+                    : modalMode === 'add' 
+                      ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/30' 
+                      : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/30'
+                }`}
+              >
+                {modalMode === 'add' ? 'Yetkiyi Ekle' : 'Değişiklikleri Kaydet'}
               </button>
             </div>
           </div>
