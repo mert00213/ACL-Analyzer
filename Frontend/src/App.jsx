@@ -97,10 +97,7 @@ function App() {
         try {
           const parsedData = JSON.parse(data);
           setScanData(parsedData);
-
-          // MERT: Taramadan sonra her şeyi SIFIR (kapalı) hale getiriyoruz.
           setExpandedFolders(new Set());
-
         } catch (error) {
           console.error("Gelen veri parse edilemedi:", error);
           alert("Veri işlenirken bir hata oluştu. Lütfen logları kontrol edin.");
@@ -135,14 +132,12 @@ function App() {
     });
   };
 
-  // MERT: İşte o kusursuz çalışan yeni SOY AĞACI algoritması! (Hata yapması imkansızdır)
   const visibleFolders = filteredData.filter(folder => {
-    if (searchTerm) return true; // Arama yapılıyorsa her şey açık görünür.
+    if (searchTerm) return true;
 
     const normalizedPath = folder.path.endsWith('\\') ? folder.path.slice(0, -1) : folder.path;
     let parentPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('\\'));
 
-    // Klasörün üstündeki tüm babaları, dedeleri kontrol et. Biri bile kapalıysa bunu gizle.
     while (parentPath && parentPath.split('\\').filter(Boolean).length >= baseDepth) {
       if (!expandedFolders.has(parentPath) && !expandedFolders.has(parentPath + '\\')) {
         return false;
@@ -206,6 +201,7 @@ function App() {
 
                 <div className="h-5 w-[1px] bg-slate-300 mx-1 hidden sm:block"></div>
 
+                {/* MERT: ORİJİNAL YEŞİL BUTON VE YANINDAKİ YENİ CHECKBOX */}
                 <button
                   onClick={() => setShowSubfolders(!showSubfolders)}
                   className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium h-8 px-3 rounded shadow-sm transition-colors text-xs"
@@ -216,7 +212,17 @@ function App() {
                     <><span>📁</span> Alt Klasörleri Göster</>
                   )}
                 </button>
-                <span className="text-xs font-semibold bg-slate-200 text-slate-800 px-3 h-8 rounded border border-slate-300 flex items-center shadow-sm">
+
+                <div className="flex items-center justify-center pl-1 pr-2 cursor-pointer" title="Alt klasörleri göster/gizle">
+                  <input
+                    type="checkbox"
+                    checked={showSubfolders}
+                    onChange={(e) => setShowSubfolders(e.target.checked)}
+                    className="w-4 h-4 text-emerald-600 bg-white border-slate-300 rounded focus:ring-emerald-500 cursor-pointer accent-emerald-600"
+                  />
+                </div>
+
+                <span className="text-xs font-semibold bg-slate-200 text-slate-800 px-3 h-8 rounded border border-slate-300 flex items-center shadow-sm ml-auto sm:ml-0">
                   Girdi: {visibleData.length} Dizin
                 </span>
               </div>
@@ -249,7 +255,7 @@ function App() {
                             <div style={{ marginLeft: `${indent * 20}px` }} className="flex items-center justify-between gap-2 pr-1">
                               <div className="flex items-center gap-2 truncate">
 
-                                {/* MERT: İşte SVGLER! Kayma yok, hizalama %100 jilet gibi! */}
+                                {/* Kusursuz Hizalanmış SVG Oklar */}
                                 <div className="w-5 h-5 flex-shrink-0 flex items-center justify-center">
                                   {hasSubfolders ? (
                                     <span
@@ -265,7 +271,6 @@ function App() {
                                     </span>
                                   ) : (
                                     <span className="text-slate-300 w-full h-full flex items-center justify-center">
-                                      {/* İçi boş, sadece çizgili SV üçgen */}
                                       <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-none stroke-current stroke-2"><path d="M8 5v14l11-7z" strokeLinejoin="round" /></svg>
                                     </span>
                                   )}
