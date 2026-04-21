@@ -109,11 +109,10 @@ const FolderRow = React.memo(({
 
 function App() {
   const [scanData, setScanData] = useState({ totalFiles: 0, criticalFound: 0, scanDate: '-', details: [] });
-  const [groupedData, setGroupedData] = useState([]);
 
   const [showSubfolders, setShowSubfolders] = useState(true);
   const [isExitModalOpen, setIsExitModalOpen] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false); // Animasyon durumu geri eklendi
 
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -121,22 +120,15 @@ function App() {
   const [expandedFolders, setExpandedFolders] = useState(new Set());
   const [selectedFolder, setSelectedFolder] = useState(null);
 
-  // Yerleşik Sonsuz Kaydırma Limiti
-  const [visibleCount, setVisibleCount] = useState(100);
-
   const [isPermissionModalOpen, setIsPermissionModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState('add');
   const [activeFolder, setActiveFolder] = useState('');
   const [permissionForm, setPermissionForm] = useState({ oldUser: '', user: '', perm: 'ReadAndExecute' });
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 300);
+    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 200);
     return () => clearTimeout(timer);
   }, [searchTerm]);
-
-  useEffect(() => {
-    setVisibleCount(100);
-  }, [debouncedSearch, expandedFolders, scanData]);
 
   const getCommonPath = (details) => {
     if (!details || details.length === 0) return '';
@@ -155,66 +147,20 @@ function App() {
 
   const commonPath = useMemo(() => getCommonPath(scanData.details), [scanData.details]);
 
-  // Web Worker (Arka Planda JSON İşleyici)
-  useEffect(() => {
-    const workerCode = `
-      self.onmessage = function(e) {
-        const payload = e.data;
-        try {
-          const parsedData = JSON.parse(payload);
-          const map = new Map();
-          for (let i = 0; i < parsedData.details.length; i++) {
-            const item = parsedData.details[i];
-            if (!map.has(item.path)) {
-              map.set(item.path, { path: item.path, permissions: [] });
-            }
-            map.get(item.path).permissions.push({ user: item.user, perm: item.perm, isInherited: item.isInherited });
-          }
-          let result = Array.from(map.values());
-          result.sort((a, b) => (a.path > b.path ? 1 : (a.path < b.path ? -1 : 0)));
-          self.postMessage({ status: 'success', parsedData, groupedResult: result });
-        } catch (err) {
-          self.postMessage({ status: 'error', error: err.message });
-        }
-      };
-    `;
-
-    const blob = new Blob([workerCode], { type: 'application/javascript' });
-    const workerUrl = URL.createObjectURL(blob);
-    const worker = new Worker(workerUrl);
-
-    worker.onmessage = (e) => {
-      const { status, parsedData, groupedResult, error } = e.data;
-      if (status === 'success') {
-        setScanData(parsedData);
-        setGroupedData(groupedResult);
-        setExpandedFolders(new Set());
-        setIsProcessing(false);
-      } else {
-        console.error("Worker Hatası:", error);
-        alert("Veri işlenirken bir hata oluştu.");
-        setIsProcessing(false);
+  const groupedData = useMemo(() => {
+    if (!scanData.details) return [];
+    const map = new Map();
+    for (let i = 0; i < scanData.details.length; i++) {
+      const item = scanData.details[i];
+      if (!map.has(item.path)) {
+        map.set(item.path, { path: item.path, permissions: [] });
       }
-    };
-
-    const handleBackendMessage = (event) => {
-      const { type, data } = event.detail;
-      if (type === 'scanComplete') {
-        worker.postMessage(data);
-      } else if (type === 'error') {
-        alert("Bir Hata Oluştu: " + data);
-        setIsProcessing(false);
-      }
-    };
-
-    window.addEventListener('backendMessage', handleBackendMessage);
-
-    return () => {
-      window.removeEventListener('backendMessage', handleBackendMessage);
-      worker.terminate();
-      URL.revokeObjectURL(workerUrl);
-    };
-  }, []);
+      map.get(item.path).permissions.push({ user: item.user, perm: item.perm, isInherited: item.isInherited });
+    }
+    let result = Array.from(map.values());
+    result.sort((a, b) => (a.path > b.path ? 1 : (a.path < b.path ? -1 : 0)));
+    return result;
+  }, [scanData.details]);
 
   const baseDepth = useMemo(() => {
     if (groupedData.length === 0) return 0;
@@ -226,8 +172,31 @@ function App() {
     return groupedData.filter(r => r.path.split('\\').filter(Boolean).length === baseDepth);
   }, [groupedData, showSubfolders, baseDepth]);
 
+  useEffect(() => {
+    const handleBackendMessage = (event) => {
+      const { type, data } = event.detail;
+      if (type === 'scanComplete') {
+        try {
+          const parsedData = JSON.parse(data);
+          setScanData(parsedData);
+          setExpandedFolders(new Set());
+        } catch (error) {
+          console.error("Parse Error:", error);
+          alert("Veri okunamadı.");
+        } finally {
+          setIsProcessing(false); // Veri gelince animasyonu durdurur
+        }
+      } else if (type === 'error') {
+        alert("Bir Hata Oluştu: " + data);
+        setIsProcessing(false);
+      }
+    };
+    window.addEventListener('backendMessage', handleBackendMessage);
+    return () => window.removeEventListener('backendMessage', handleBackendMessage);
+  }, []);
+
   const handleScanFolder = () => {
-    setIsProcessing(true);
+    setIsProcessing(true); // Tuşa basıldığında animasyonu başlatır
     if (window.chrome && window.chrome.webview) {
       window.chrome.webview.postMessage({ command: "scanFolder", data: { path: "C:\\" } });
     } else {
@@ -238,7 +207,6 @@ function App() {
 
   const handleClear = () => {
     setScanData({ totalFiles: 0, criticalFound: 0, scanDate: '-', details: [] });
-    setGroupedData([]);
     setSearchTerm('');
     setDebouncedSearch('');
     setExpandedFolders(new Set());
@@ -262,7 +230,6 @@ function App() {
 
     let hidePrefix = null;
     const result = [];
-
     for (let i = 0; i < filteredData.length; i++) {
       const folder = filteredData[i];
       if (hidePrefix && folder.path.startsWith(hidePrefix)) continue;
@@ -309,15 +276,7 @@ function App() {
     }
   }, []);
 
-  // YERLEŞİK SONSUZ KAYDIRMA - Hata verdirmeyen, tertemiz performans motoru
-  const handleScroll = (e) => {
-    const bottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 300;
-    if (bottom && visibleCount < visibleFolders.length) {
-      setVisibleCount(prev => prev + 100);
-    }
-  };
-
-  const displayedFolders = visibleFolders.slice(0, visibleCount);
+  const displayedFolders = visibleFolders.slice(0, 5000);
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-800 font-sans text-sm">
@@ -328,6 +287,7 @@ function App() {
 
         <div className="p-4 sm:p-6 flex-1 flex flex-col min-h-0">
           <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden flex flex-col flex-1 h-full min-h-0">
+
             {/* Araç Çubuğu */}
             <div className="p-3 border-b border-slate-200 flex flex-col gap-3 bg-slate-50 flex-shrink-0">
               <div className="flex items-center gap-2">
@@ -342,6 +302,7 @@ function App() {
                   />
                 </div>
 
+                {/* DİNAMİK SEÇ BUTONU VE ANİMASYON GERİ GELDİ */}
                 <button
                   onClick={handleScanFolder}
                   disabled={isProcessing}
@@ -417,41 +378,34 @@ function App() {
               <div className="w-1/2 py-2 px-4 font-semibold uppercase tracking-wider border-l border-slate-600">İzinli Kullanıcı Kısmı (R/W)</div>
             </div>
 
-            {/* Liste Alanı (Yerleşik Scroll ile, react-window tamamen kaldırıldı) */}
-            <div className="flex-1 bg-white relative overflow-y-auto" onScroll={handleScroll}>
+            {/* Liste Alanı */}
+            <div className="flex-1 bg-white relative overflow-y-auto">
               <div className="flex flex-col">
                 {visibleData && visibleData.length > 0 ? (
                   displayedFolders.length > 0 ? (
-                    <>
-                      {displayedFolders.map((folder, index) => {
-                        const indent = baseDepth > 0 ? Math.max(0, folder.path.split('\\').filter(Boolean).length - baseDepth) : 0;
-                        const folderPathForCheck = folder.path.endsWith('\\') ? folder.path : folder.path + '\\';
-                        const hasSubfolders = filteredData.some(f => f.path.startsWith(folderPathForCheck) && f.path !== folder.path);
+                    displayedFolders.map((folder, index) => {
+                      const indent = baseDepth > 0 ? Math.max(0, folder.path.split('\\').filter(Boolean).length - baseDepth) : 0;
+                      const folderPathForCheck = folder.path.endsWith('\\') ? folder.path : folder.path + '\\';
+                      const hasSubfolders = filteredData.some(f => f.path.startsWith(folderPathForCheck) && f.path !== folder.path);
 
-                        return (
-                          <FolderRow
-                            key={index}
-                            folder={folder}
-                            index={index}
-                            indent={indent}
-                            isSelected={selectedFolder === folder.path}
-                            hasSubfolders={hasSubfolders}
-                            isExpanded={expandedFolders.has(folder.path)}
-                            searchTerm={debouncedSearch}
-                            onToggle={handleToggle}
-                            onSelect={handleSelect}
-                            onAddPerm={handleAddPerm}
-                            onEditPerm={handleEditPerm}
-                            onDeletePerm={handleDeletePerm}
-                          />
-                        );
-                      })}
-                      {visibleCount < visibleFolders.length && (
-                        <div className="p-4 text-center text-emerald-600 text-xs bg-slate-50 border-t border-slate-100 font-semibold animate-pulse">
-                          Daha fazla klasör yükleniyor... Aşağı kaydırın.
-                        </div>
-                      )}
-                    </>
+                      return (
+                        <FolderRow
+                          key={index}
+                          folder={folder}
+                          index={index}
+                          indent={indent}
+                          isSelected={selectedFolder === folder.path}
+                          hasSubfolders={hasSubfolders}
+                          isExpanded={expandedFolders.has(folder.path)}
+                          searchTerm={debouncedSearch}
+                          onToggle={handleToggle}
+                          onSelect={handleSelect}
+                          onAddPerm={handleAddPerm}
+                          onEditPerm={handleEditPerm}
+                          onDeletePerm={handleDeletePerm}
+                        />
+                      );
+                    })
                   ) : (
                     <div className="p-12 text-center">
                       <div className="text-4xl opacity-20 mb-3">🔍</div>
