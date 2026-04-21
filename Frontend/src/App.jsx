@@ -3,6 +3,7 @@ import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import './App.css'
 
+// Akıllı Satır Bileşeni (Sadece değişen satırı çizer, mükemmel performans)
 const FolderRow = React.memo(({
   folder, index, indent, isSelected, hasSubfolders, isExpanded, searchTerm,
   onToggle, onSelect, onAddPerm, onEditPerm, onDeletePerm
@@ -11,7 +12,7 @@ const FolderRow = React.memo(({
   const name = parts[parts.length - 1];
 
   return (
-    <div onClick={() => onSelect(folder.path)} className="flex hover:bg-slate-50 transition-colors border-l-2 border-transparent hover:border-emerald-400 cursor-pointer">
+    <div onClick={() => onSelect(folder.path)} className="flex hover:bg-slate-50 transition-colors border-b border-slate-100 bg-white border-l-2 border-transparent hover:border-emerald-400 cursor-pointer">
       <div className="w-1/2 py-2 px-4 text-slate-700 border-r border-slate-100 flex flex-col justify-center" title={folder.path}>
         <div style={{ marginLeft: `${indent * 20}px` }} className="flex items-center justify-between gap-2 pr-1">
           <div className="flex items-center gap-2 truncate">
@@ -50,7 +51,7 @@ const FolderRow = React.memo(({
         </div>
       </div>
 
-      <div className="w-1/2 p-2 flex flex-col gap-1.5">
+      <div className="w-1/2 p-2 flex flex-col justify-center gap-1.5">
         {folder.permissions
           .filter(p => {
             if (!searchTerm) return true;
@@ -107,12 +108,8 @@ const FolderRow = React.memo(({
 });
 
 function App() {
-  const [scanData, setScanData] = useState({
-    totalFiles: 0,
-    criticalFound: 0,
-    scanDate: '-',
-    details: []
-  });
+  const [scanData, setScanData] = useState({ totalFiles: 0, criticalFound: 0, scanDate: '-', details: [] });
+  const [groupedData, setGroupedData] = useState([]);
 
   const [showSubfolders, setShowSubfolders] = useState(true);
   const [isExitModalOpen, setIsExitModalOpen] = useState(false);
@@ -124,7 +121,7 @@ function App() {
   const [expandedFolders, setExpandedFolders] = useState(new Set());
   const [selectedFolder, setSelectedFolder] = useState(null);
 
-  // HIZLANDIRMA 4: Sonsuz Kaydırma için Ekranda Görünecek Limit State'i
+  // Yerleşik Sonsuz Kaydırma Limiti
   const [visibleCount, setVisibleCount] = useState(100);
 
   const [isPermissionModalOpen, setIsPermissionModalOpen] = useState(false);
@@ -137,7 +134,6 @@ function App() {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  // Arama veya açma/kapama değiştiğinde scroll limitini başa sar
   useEffect(() => {
     setVisibleCount(100);
   }, [debouncedSearch, expandedFolders, scanData]);
@@ -151,35 +147,74 @@ function App() {
     let minLen = Math.min(...splitPaths.map(p => p.length));
     for (let i = 0; i < minLen; i++) {
       const val = splitPaths[0][i];
-      if (splitPaths.every(p => p[i] === val)) {
-        common.push(val);
-      } else {
-        break;
-      }
+      if (splitPaths.every(p => p[i] === val)) common.push(val);
+      else break;
     }
     return common.length > 0 ? common.join('\\') + '\\' : '';
   };
 
   const commonPath = useMemo(() => getCommonPath(scanData.details), [scanData.details]);
 
-  const groupedData = useMemo(() => {
-    if (!scanData.details) return [];
-    const map = new Map();
+  // Web Worker (Arka Planda JSON İşleyici)
+  useEffect(() => {
+    const workerCode = `
+      self.onmessage = function(e) {
+        const payload = e.data;
+        try {
+          const parsedData = JSON.parse(payload);
+          const map = new Map();
+          for (let i = 0; i < parsedData.details.length; i++) {
+            const item = parsedData.details[i];
+            if (!map.has(item.path)) {
+              map.set(item.path, { path: item.path, permissions: [] });
+            }
+            map.get(item.path).permissions.push({ user: item.user, perm: item.perm, isInherited: item.isInherited });
+          }
+          let result = Array.from(map.values());
+          result.sort((a, b) => (a.path > b.path ? 1 : (a.path < b.path ? -1 : 0)));
+          self.postMessage({ status: 'success', parsedData, groupedResult: result });
+        } catch (err) {
+          self.postMessage({ status: 'error', error: err.message });
+        }
+      };
+    `;
 
-    // HIZLANDIRMA 2: Hızlı For Döngüsü ve Map Setleri
-    for (let i = 0; i < scanData.details.length; i++) {
-      const item = scanData.details[i];
-      if (!map.has(item.path)) {
-        map.set(item.path, { path: item.path, permissions: [] });
+    const blob = new Blob([workerCode], { type: 'application/javascript' });
+    const workerUrl = URL.createObjectURL(blob);
+    const worker = new Worker(workerUrl);
+
+    worker.onmessage = (e) => {
+      const { status, parsedData, groupedResult, error } = e.data;
+      if (status === 'success') {
+        setScanData(parsedData);
+        setGroupedData(groupedResult);
+        setExpandedFolders(new Set());
+        setIsProcessing(false);
+      } else {
+        console.error("Worker Hatası:", error);
+        alert("Veri işlenirken bir hata oluştu.");
+        setIsProcessing(false);
       }
-      map.get(item.path).permissions.push({ user: item.user, perm: item.perm, isInherited: item.isInherited });
-    }
+    };
 
-    let result = Array.from(map.values());
-    // HIZLANDIRMA 2: localeCompare yerine çok daha hızlı olan ASCII operatörü
-    result.sort((a, b) => (a.path > b.path ? 1 : (a.path < b.path ? -1 : 0)));
-    return result;
-  }, [scanData.details]);
+    const handleBackendMessage = (event) => {
+      const { type, data } = event.detail;
+      if (type === 'scanComplete') {
+        worker.postMessage(data);
+      } else if (type === 'error') {
+        alert("Bir Hata Oluştu: " + data);
+        setIsProcessing(false);
+      }
+    };
+
+    window.addEventListener('backendMessage', handleBackendMessage);
+
+    return () => {
+      window.removeEventListener('backendMessage', handleBackendMessage);
+      worker.terminate();
+      URL.revokeObjectURL(workerUrl);
+    };
+  }, []);
 
   const baseDepth = useMemo(() => {
     if (groupedData.length === 0) return 0;
@@ -203,6 +238,7 @@ function App() {
 
   const handleClear = () => {
     setScanData({ totalFiles: 0, criticalFound: 0, scanDate: '-', details: [] });
+    setGroupedData([]);
     setSearchTerm('');
     setDebouncedSearch('');
     setExpandedFolders(new Set());
@@ -210,34 +246,6 @@ function App() {
     setIsExitModalOpen(false);
     setIsPermissionModalOpen(false);
   };
-
-  useEffect(() => {
-    const handleBackendMessage = (event) => {
-      const { type, data } = event.detail;
-
-      if (type === 'scanComplete') {
-        // HIZLANDIRMA 3: Asenkron Veri İşleme (UI Donmasını Engeller)
-        setTimeout(() => {
-          try {
-            const parsedData = JSON.parse(data);
-            setScanData(parsedData);
-            setExpandedFolders(new Set());
-          } catch (error) {
-            console.error("Gelen veri parse edilemedi:", error);
-            alert("Veri işlenirken bir hata oluştu.");
-          } finally {
-            setIsProcessing(false);
-          }
-        }, 50); // 50ms bekleme, tarayıcının animasyonu çizmesine izin verir
-      } else if (type === 'error') {
-        alert("Bir Hata Oluştu: " + data);
-        setIsProcessing(false);
-      }
-    };
-
-    window.addEventListener('backendMessage', handleBackendMessage);
-    return () => window.removeEventListener('backendMessage', handleBackendMessage);
-  }, []);
 
   const filteredData = useMemo(() => visibleData.filter(folder => {
     if (!debouncedSearch) return true;
@@ -249,31 +257,21 @@ function App() {
       );
   }), [visibleData, debouncedSearch]);
 
-  // HIZLANDIRMA 1: Işık Hızında O(N) Kalkan Algoritması (Ağaç yapısını hesaplamak için)
   const visibleFolders = useMemo(() => {
-    if (debouncedSearch) return filteredData; // Arama varsa her şeyi göster
+    if (debouncedSearch) return filteredData;
 
     let hidePrefix = null;
     const result = [];
 
     for (let i = 0; i < filteredData.length; i++) {
       const folder = filteredData[i];
-
-      // Eğer şu an kapalı bir klasörün altındaysak bunu direkt atla
-      if (hidePrefix && folder.path.startsWith(hidePrefix)) {
-        continue;
-      }
-
-      // Yeni bir ağaca (ebeveyne) geçtik, kalkanı temizle
+      if (hidePrefix && folder.path.startsWith(hidePrefix)) continue;
       hidePrefix = null;
       result.push(folder);
-
-      // Eğer bu klasör (satır) kullanıcı tarafından kapatılmışsa, altındakiler için kalkan oluştur
       if (!expandedFolders.has(folder.path)) {
         hidePrefix = folder.path.endsWith('\\') ? folder.path : folder.path + '\\';
       }
     }
-
     return result;
   }, [filteredData, debouncedSearch, expandedFolders]);
 
@@ -287,9 +285,7 @@ function App() {
     });
   }, []);
 
-  const handleSelect = useCallback((path) => {
-    setSelectedFolder(path);
-  }, []);
+  const handleSelect = useCallback((path) => setSelectedFolder(path), []);
 
   const handleAddPerm = useCallback((path) => {
     setActiveFolder(path);
@@ -313,11 +309,11 @@ function App() {
     }
   }, []);
 
-  // HIZLANDIRMA 4: Aşağı kaydırdıkça yükleme dinleyicisi
+  // YERLEŞİK SONSUZ KAYDIRMA - Hata verdirmeyen, tertemiz performans motoru
   const handleScroll = (e) => {
-    const bottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 400; // Alta 400px kala
+    const bottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 300;
     if (bottom && visibleCount < visibleFolders.length) {
-      setVisibleCount(prev => prev + 100); // 100 tane daha klasör ekle
+      setVisibleCount(prev => prev + 100);
     }
   };
 
@@ -327,13 +323,13 @@ function App() {
     <div className="flex h-screen bg-slate-50 text-slate-800 font-sans text-sm">
       <Sidebar onLogout={() => setIsExitModalOpen(true)} />
 
-      <div className="flex-1 flex flex-col overflow-auto">
+      <div className="flex-1 flex flex-col overflow-hidden">
         <Header searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
 
-        <div className="p-4 sm:p-6 flex-1 overflow-auto">
+        <div className="p-4 sm:p-6 flex-1 flex flex-col min-h-0">
           <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden flex flex-col flex-1 h-full min-h-0">
             {/* Araç Çubuğu */}
-            <div className="p-3 border-b border-slate-200 flex flex-col gap-3 bg-slate-50">
+            <div className="p-3 border-b border-slate-200 flex flex-col gap-3 bg-slate-50 flex-shrink-0">
               <div className="flex items-center gap-2">
                 <div className="relative flex-1 shadow-sm rounded">
                   <span className="absolute inset-y-0 left-0 pl-2.5 flex items-center text-slate-400">📂</span>
@@ -387,7 +383,6 @@ function App() {
 
                 <div className="h-5 w-[1px] bg-slate-300 mx-1 hidden sm:block"></div>
 
-                {/* YEŞİL BUTON VE CHECKBOX KORUNDU */}
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => setShowSubfolders(!showSubfolders)}
@@ -417,14 +412,14 @@ function App() {
             </div>
 
             {/* Ara Başlıklar */}
-            <div className="flex bg-slate-800 text-white sticky top-0 z-10 border-b border-slate-600 text-xs">
+            <div className="flex bg-slate-800 text-white border-b border-slate-600 text-xs flex-shrink-0">
               <div className="w-1/2 py-2 px-4 font-semibold uppercase tracking-wider">Klasör Yapısı</div>
               <div className="w-1/2 py-2 px-4 font-semibold uppercase tracking-wider border-l border-slate-600">İzinli Kullanıcı Kısmı (R/W)</div>
             </div>
 
-            {/* HIZLANDIRMA 4: onScroll olayı eklendi */}
-            <div className="flex-1 overflow-y-auto bg-white p-0" onScroll={handleScroll}>
-              <div className="divide-y divide-slate-100">
+            {/* Liste Alanı (Yerleşik Scroll ile, react-window tamamen kaldırıldı) */}
+            <div className="flex-1 bg-white relative overflow-y-auto" onScroll={handleScroll}>
+              <div className="flex flex-col">
                 {visibleData && visibleData.length > 0 ? (
                   displayedFolders.length > 0 ? (
                     <>
@@ -451,10 +446,8 @@ function App() {
                           />
                         );
                       })}
-
-                      {/* Yükleniyor Uyarı Çubuğu */}
                       {visibleCount < visibleFolders.length && (
-                        <div className="p-4 text-center text-slate-500 text-xs bg-slate-50 animate-pulse">
+                        <div className="p-4 text-center text-emerald-600 text-xs bg-slate-50 border-t border-slate-100 font-semibold animate-pulse">
                           Daha fazla klasör yükleniyor... Aşağı kaydırın.
                         </div>
                       )}
@@ -466,7 +459,7 @@ function App() {
                     </div>
                   )
                 ) : (
-                  <div className="p-12 text-center">
+                  <div className="p-12 text-center h-full flex flex-col items-center justify-center">
                     <div className="text-4xl opacity-20 mb-3">📂</div>
                     <p className="text-slate-500 font-medium text-sm">Listelenecek yetki klasörü bulunamadı.</p>
                   </div>
@@ -477,7 +470,7 @@ function App() {
         </div>
       </div>
 
-      {/* Corporate Exit Approval Modal */}
+      {/* Modallar */}
       {isExitModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm transition-opacity">
           <div className="bg-white rounded shadow-xl border border-slate-200 w-full max-w-sm overflow-hidden">
@@ -495,7 +488,6 @@ function App() {
         </div>
       )}
 
-      {/* Permission Add/Edit Modal */}
       {isPermissionModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm transition-opacity">
           <div className="bg-white rounded shadow-xl border border-slate-200 w-full max-w-sm overflow-hidden">
