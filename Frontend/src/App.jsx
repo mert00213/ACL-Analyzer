@@ -162,7 +162,7 @@ function App() {
 
         <div className="p-4 sm:p-6 flex-1 overflow-auto">
           <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden flex flex-col flex-1 h-full min-h-0">
-            {/* Araç Çubuğu - Daha kompakt */}
+            {/* Araç Çubuğu */}
             <div className="p-3 border-b border-slate-200 flex flex-col gap-3 bg-slate-50">
               <div className="flex items-center gap-2">
                 <div className="relative flex-1 shadow-sm rounded">
@@ -244,25 +244,27 @@ function App() {
 
                       return (
                         <div key={index} className="flex hover:bg-slate-50 transition-colors">
-                          {/* Sol Sütun: Klasör - Daha kompakt padding */}
+                          {/* Sol Sütun: Klasör */}
                           <div className="w-1/2 py-2 px-4 text-slate-700 border-r border-slate-100 flex flex-col justify-center" title={folder.path}>
                             <div style={{ marginLeft: `${indent * 20}px` }} className="flex items-center justify-between gap-2 pr-1">
                               <div className="flex items-center gap-1.5 truncate">
 
-                                {hasSubfolders ? (
-                                  <span
-                                    onClick={(e) => toggleFolder(e, folder.path)}
-                                    className="text-emerald-600 font-bold drop-shadow-sm flex-shrink-0 cursor-pointer hover:bg-emerald-100 w-5 h-5 flex items-center justify-center rounded transition-colors text-[10px]"
-                                  >
-                                    {isExpanded ? '▼' : '▶'}
-                                  </span>
-                                ) : (
-                                  indent === 0 ? (
-                                    <span className="text-emerald-500 drop-shadow flex-shrink-0 w-5 h-5 flex items-center justify-center text-[10px]">▶</span>
+                                {/* İŞTE HİZALAMANIN DÜZELDİĞİ YER: Sabit Genişlikli İkon Kutusu */}
+                                <div className="w-5 h-5 flex-shrink-0 flex items-center justify-center">
+                                  {hasSubfolders ? (
+                                    <span
+                                      onClick={(e) => toggleFolder(e, folder.path)}
+                                      className="text-emerald-600 font-bold drop-shadow-sm cursor-pointer hover:bg-emerald-100 w-full h-full flex items-center justify-center rounded transition-colors text-[10px]"
+                                      title={isExpanded ? "Daralt" : "Genişlet"}
+                                    >
+                                      {isExpanded ? '▼' : '▶'}
+                                    </span>
                                   ) : (
-                                    <span className="text-slate-300 flex-shrink-0 font-bold ml-1 w-5 flex justify-center text-[10px]">└─▶</span>
-                                  )
-                                )}
+                                    <span className="text-slate-400 font-bold text-[11px] opacity-70">
+                                      ▷
+                                    </span>
+                                  )}
+                                </div>
 
                                 <span className={`truncate text-sm ${indent === 0 ? 'font-semibold text-slate-800' : 'text-slate-600'}`}>
                                   📂 {name || folder.path}
@@ -285,7 +287,7 @@ function App() {
                             </div>
                           </div>
 
-                          {/* Sağ Sütun: Yetkiler - Daha kompakt hap tasarımı */}
+                          {/* Sağ Sütun: Yetkiler */}
                           <div className="w-1/2 p-2 flex flex-col gap-1.5">
                             {folder.permissions
                               .filter(p => {
