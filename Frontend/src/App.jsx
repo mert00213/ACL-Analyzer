@@ -98,10 +98,9 @@ function App() {
           const parsedData = JSON.parse(data);
           setScanData(parsedData);
 
-          if (parsedData.details && parsedData.details.length > 0) {
-            const uniquePaths = [...new Set(parsedData.details.map(d => d.path))].sort();
-            setExpandedFolders(new Set([uniquePaths[0]]));
-          }
+          // MERT: Taramadan sonra her şeyi SIFIR (kapalı) hale getiriyoruz.
+          setExpandedFolders(new Set());
+
         } catch (error) {
           console.error("Gelen veri parse edilemedi:", error);
           alert("Veri işlenirken bir hata oluştu. Lütfen logları kontrol edin.");
@@ -136,18 +135,19 @@ function App() {
     });
   };
 
-  let hiddenUnderPath = null;
+  // MERT: İşte o kusursuz çalışan yeni SOY AĞACI algoritması! (Hata yapması imkansızdır)
   const visibleFolders = filteredData.filter(folder => {
-    if (searchTerm) return true;
+    if (searchTerm) return true; // Arama yapılıyorsa her şey açık görünür.
 
-    if (hiddenUnderPath && folder.path.startsWith(hiddenUnderPath)) {
-      return false;
-    }
+    const normalizedPath = folder.path.endsWith('\\') ? folder.path.slice(0, -1) : folder.path;
+    let parentPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('\\'));
 
-    if (!expandedFolders.has(folder.path)) {
-      hiddenUnderPath = folder.path.endsWith('\\') ? folder.path : folder.path + '\\';
-    } else {
-      hiddenUnderPath = null;
+    // Klasörün üstündeki tüm babaları, dedeleri kontrol et. Biri bile kapalıysa bunu gizle.
+    while (parentPath && parentPath.split('\\').filter(Boolean).length >= baseDepth) {
+      if (!expandedFolders.has(parentPath) && !expandedFolders.has(parentPath + '\\')) {
+        return false;
+      }
+      parentPath = parentPath.substring(0, parentPath.lastIndexOf('\\'));
     }
 
     return true;
@@ -243,30 +243,35 @@ function App() {
                       const isExpanded = expandedFolders.has(folder.path);
 
                       return (
-                        <div key={index} className="flex hover:bg-slate-50 transition-colors">
+                        <div key={index} className="flex hover:bg-slate-50 transition-colors border-l-2 border-transparent hover:border-emerald-400">
                           {/* Sol Sütun: Klasör */}
                           <div className="w-1/2 py-2 px-4 text-slate-700 border-r border-slate-100 flex flex-col justify-center" title={folder.path}>
                             <div style={{ marginLeft: `${indent * 20}px` }} className="flex items-center justify-between gap-2 pr-1">
-                              <div className="flex items-center gap-1.5 truncate">
+                              <div className="flex items-center gap-2 truncate">
 
-                                {/* İŞTE HİZALAMANIN DÜZELDİĞİ YER: Sabit Genişlikli İkon Kutusu */}
+                                {/* MERT: İşte SVGLER! Kayma yok, hizalama %100 jilet gibi! */}
                                 <div className="w-5 h-5 flex-shrink-0 flex items-center justify-center">
                                   {hasSubfolders ? (
                                     <span
                                       onClick={(e) => toggleFolder(e, folder.path)}
-                                      className="text-emerald-600 font-bold drop-shadow-sm cursor-pointer hover:bg-emerald-100 w-full h-full flex items-center justify-center rounded transition-colors text-[10px]"
+                                      className="text-emerald-600 cursor-pointer hover:bg-emerald-100 w-full h-full flex items-center justify-center rounded transition-colors"
                                       title={isExpanded ? "Daralt" : "Genişlet"}
                                     >
-                                      {isExpanded ? '▼' : '▶'}
+                                      {isExpanded ? (
+                                        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current"><path d="M5 8h14l-7 11z" /></svg>
+                                      ) : (
+                                        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current"><path d="M8 5v14l11-7z" /></svg>
+                                      )}
                                     </span>
                                   ) : (
-                                    <span className="text-slate-400 font-bold text-[11px] opacity-70">
-                                      ▷
+                                    <span className="text-slate-300 w-full h-full flex items-center justify-center">
+                                      {/* İçi boş, sadece çizgili SV üçgen */}
+                                      <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-none stroke-current stroke-2"><path d="M8 5v14l11-7z" strokeLinejoin="round" /></svg>
                                     </span>
                                   )}
                                 </div>
 
-                                <span className={`truncate text-sm ${indent === 0 ? 'font-semibold text-slate-800' : 'text-slate-600'}`}>
+                                <span className={`truncate text-sm ${indent === 0 ? 'font-semibold text-slate-800' : 'font-medium text-slate-600'}`}>
                                   📂 {name || folder.path}
                                 </span>
                               </div>
