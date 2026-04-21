@@ -1,7 +1,110 @@
-import { useEffect, useState, useMemo } from 'react'
+import React, { useEffect, useState, useMemo, useCallback } from 'react'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import './App.css'
+
+const FolderRow = React.memo(({
+  folder, index, indent, isSelected, hasSubfolders, isExpanded, searchTerm,
+  onToggle, onSelect, onAddPerm, onEditPerm, onDeletePerm
+}) => {
+  const parts = folder.path.split('\\').filter(Boolean);
+  const name = parts[parts.length - 1];
+
+  return (
+    <div onClick={() => onSelect(folder.path)} className="flex hover:bg-slate-50 transition-colors border-l-2 border-transparent hover:border-emerald-400 cursor-pointer">
+      <div className="w-1/2 py-2 px-4 text-slate-700 border-r border-slate-100 flex flex-col justify-center" title={folder.path}>
+        <div style={{ marginLeft: `${indent * 20}px` }} className="flex items-center justify-between gap-2 pr-1">
+          <div className="flex items-center gap-2 truncate">
+            <div className="w-5 h-5 flex-shrink-0 flex items-center justify-center">
+              {hasSubfolders ? (
+                <span
+                  onClick={(e) => onToggle(e, folder.path)}
+                  className="text-emerald-600 cursor-pointer hover:bg-emerald-100 w-full h-full flex items-center justify-center rounded transition-colors"
+                  title={isExpanded ? "Daralt" : "Genişlet"}
+                >
+                  {isExpanded ? (
+                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current"><path d="M5 8h14l-7 11z" /></svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current"><path d="M8 5v14l11-7z" /></svg>
+                  )}
+                </span>
+              ) : (
+                <span className="text-slate-300 w-full h-full flex items-center justify-center">
+                  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-none stroke-current stroke-2"><path d="M8 5v14l11-7z" strokeLinejoin="round" /></svg>
+                </span>
+              )}
+            </div>
+            <span className={`truncate text-sm ${indent === 0 ? 'font-semibold text-slate-800' : 'font-medium text-slate-600'}`}>
+              📂 {name || folder.path}
+            </span>
+          </div>
+          <button
+            onClick={(e) => { e.stopPropagation(); onAddPerm(folder.path); }}
+            className="text-emerald-600 hover:bg-emerald-100 p-1 rounded flex-shrink-0 transition-colors focus:outline-none"
+            title="Yeni Yetki Ekle"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div className="w-1/2 p-2 flex flex-col gap-1.5">
+        {folder.permissions
+          .filter(p => {
+            if (!searchTerm) return true;
+            const term = searchTerm.toLowerCase();
+            if (folder.path.toLowerCase().includes(term)) return true;
+            return (p.user && p.user.toLowerCase().includes(term)) ||
+              (p.perm && p.perm.toLowerCase().includes(term));
+          })
+          .map((p, i) => {
+            const isRisky = (p.user || '').includes('Everyone') || (p.perm || '').includes('Full');
+            return (
+              <div key={i} className={`group flex items-center justify-between px-2.5 py-1.5 rounded border shadow-sm transition-all hover:shadow ${isRisky ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
+                <div className="flex items-center gap-1.5 truncate min-w-0 pr-2">
+                  <span className="text-xs">{isRisky ? '⚠️' : '👤'}</span>
+                  <span className={`text-xs font-semibold truncate ${isRisky ? 'text-red-700' : 'text-slate-700'}`}>{p.user || '-'}</span>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className={`flex items-center justify-center text-[9px] font-bold uppercase text-white px-1.5 py-0.5 rounded min-w-[60px] ${isRisky ? 'bg-red-600' : 'bg-emerald-600'}`}>
+                    {p.perm || '-'}
+                  </span>
+                  <div className="w-4 text-center text-slate-400 text-xs" title="Miras Alınmış Yetki">
+                    {(p.isInherited === "Evet" || p.isInherited === true) ? "🔄" : "-"}
+                  </div>
+
+                  <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onEditPerm(folder.path, p.user, p.perm); }}
+                      className="p-1 text-blue-500 hover:bg-blue-100 rounded transition-colors" title="Yetkiyi Düzenle">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onDeletePerm(folder.path, p.user, p.perm); }}
+                      className="p-1 text-red-500 hover:bg-red-100 rounded transition-colors" title="Yetkiyi Sil">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+      </div>
+    </div>
+  );
+}, (prev, next) => {
+  return prev.isSelected === next.isSelected &&
+    prev.isExpanded === next.isExpanded &&
+    prev.hasSubfolders === next.hasSubfolders &&
+    prev.searchTerm === next.searchTerm &&
+    prev.folder === next.folder;
+});
 
 function App() {
   const [scanData, setScanData] = useState({
@@ -13,14 +116,31 @@ function App() {
 
   const [showSubfolders, setShowSubfolders] = useState(true);
   const [isExitModalOpen, setIsExitModalOpen] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
   const [expandedFolders, setExpandedFolders] = useState(new Set());
+  const [selectedFolder, setSelectedFolder] = useState(null);
+
+  // HIZLANDIRMA 4: Sonsuz Kaydırma için Ekranda Görünecek Limit State'i
+  const [visibleCount, setVisibleCount] = useState(100);
 
   const [isPermissionModalOpen, setIsPermissionModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState('add');
   const [activeFolder, setActiveFolder] = useState('');
   const [permissionForm, setPermissionForm] = useState({ oldUser: '', user: '', perm: 'ReadAndExecute' });
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Arama veya açma/kapama değiştiğinde scroll limitini başa sar
+  useEffect(() => {
+    setVisibleCount(100);
+  }, [debouncedSearch, expandedFolders, scanData]);
 
   const getCommonPath = (details) => {
     if (!details || details.length === 0) return '';
@@ -44,17 +164,20 @@ function App() {
 
   const groupedData = useMemo(() => {
     if (!scanData.details) return [];
-
     const map = new Map();
-    scanData.details.forEach(item => {
+
+    // HIZLANDIRMA 2: Hızlı For Döngüsü ve Map Setleri
+    for (let i = 0; i < scanData.details.length; i++) {
+      const item = scanData.details[i];
       if (!map.has(item.path)) {
         map.set(item.path, { path: item.path, permissions: [] });
       }
       map.get(item.path).permissions.push({ user: item.user, perm: item.perm, isInherited: item.isInherited });
-    });
+    }
 
     let result = Array.from(map.values());
-    result.sort((a, b) => a.path.localeCompare(b.path));
+    // HIZLANDIRMA 2: localeCompare yerine çok daha hızlı olan ASCII operatörü
+    result.sort((a, b) => (a.path > b.path ? 1 : (a.path < b.path ? -1 : 0)));
     return result;
   }, [scanData.details]);
 
@@ -69,22 +192,21 @@ function App() {
   }, [groupedData, showSubfolders, baseDepth]);
 
   const handleScanFolder = () => {
+    setIsProcessing(true);
     if (window.chrome && window.chrome.webview) {
       window.chrome.webview.postMessage({ command: "scanFolder", data: { path: "C:\\" } });
     } else {
       alert("Bu özellik yalnızca uygulamanın (WebView2) içindeyken çalışır.");
+      setIsProcessing(false);
     }
   };
 
   const handleClear = () => {
-    setScanData({
-      totalFiles: 0,
-      criticalFound: 0,
-      scanDate: '-',
-      details: []
-    });
+    setScanData({ totalFiles: 0, criticalFound: 0, scanDate: '-', details: [] });
     setSearchTerm('');
+    setDebouncedSearch('');
     setExpandedFolders(new Set());
+    setSelectedFolder(null);
     setIsExitModalOpen(false);
     setIsPermissionModalOpen(false);
   };
@@ -94,16 +216,22 @@ function App() {
       const { type, data } = event.detail;
 
       if (type === 'scanComplete') {
-        try {
-          const parsedData = JSON.parse(data);
-          setScanData(parsedData);
-          setExpandedFolders(new Set());
-        } catch (error) {
-          console.error("Gelen veri parse edilemedi:", error);
-          alert("Veri işlenirken bir hata oluştu. Lütfen logları kontrol edin.");
-        }
+        // HIZLANDIRMA 3: Asenkron Veri İşleme (UI Donmasını Engeller)
+        setTimeout(() => {
+          try {
+            const parsedData = JSON.parse(data);
+            setScanData(parsedData);
+            setExpandedFolders(new Set());
+          } catch (error) {
+            console.error("Gelen veri parse edilemedi:", error);
+            alert("Veri işlenirken bir hata oluştu.");
+          } finally {
+            setIsProcessing(false);
+          }
+        }, 50); // 50ms bekleme, tarayıcının animasyonu çizmesine izin verir
       } else if (type === 'error') {
         alert("Bir Hata Oluştu: " + data);
+        setIsProcessing(false);
       }
     };
 
@@ -111,18 +239,45 @@ function App() {
     return () => window.removeEventListener('backendMessage', handleBackendMessage);
   }, []);
 
-  const filteredData = visibleData.filter(folder => {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
-
+  const filteredData = useMemo(() => visibleData.filter(folder => {
+    if (!debouncedSearch) return true;
+    const term = debouncedSearch.toLowerCase();
     return folder.path.toLowerCase().includes(term) ||
       folder.permissions.some(p =>
         (p.user && p.user.toLowerCase().includes(term)) ||
         (p.perm && p.perm.toLowerCase().includes(term))
       );
-  });
+  }), [visibleData, debouncedSearch]);
 
-  const toggleFolder = (e, path) => {
+  // HIZLANDIRMA 1: Işık Hızında O(N) Kalkan Algoritması (Ağaç yapısını hesaplamak için)
+  const visibleFolders = useMemo(() => {
+    if (debouncedSearch) return filteredData; // Arama varsa her şeyi göster
+
+    let hidePrefix = null;
+    const result = [];
+
+    for (let i = 0; i < filteredData.length; i++) {
+      const folder = filteredData[i];
+
+      // Eğer şu an kapalı bir klasörün altındaysak bunu direkt atla
+      if (hidePrefix && folder.path.startsWith(hidePrefix)) {
+        continue;
+      }
+
+      // Yeni bir ağaca (ebeveyne) geçtik, kalkanı temizle
+      hidePrefix = null;
+      result.push(folder);
+
+      // Eğer bu klasör (satır) kullanıcı tarafından kapatılmışsa, altındakiler için kalkan oluştur
+      if (!expandedFolders.has(folder.path)) {
+        hidePrefix = folder.path.endsWith('\\') ? folder.path : folder.path + '\\';
+      }
+    }
+
+    return result;
+  }, [filteredData, debouncedSearch, expandedFolders]);
+
+  const handleToggle = useCallback((e, path) => {
     e.stopPropagation();
     setExpandedFolders(prev => {
       const next = new Set(prev);
@@ -130,23 +285,43 @@ function App() {
       else next.add(path);
       return next;
     });
+  }, []);
+
+  const handleSelect = useCallback((path) => {
+    setSelectedFolder(path);
+  }, []);
+
+  const handleAddPerm = useCallback((path) => {
+    setActiveFolder(path);
+    setModalMode('add');
+    setPermissionForm({ oldUser: '', user: '', perm: 'ReadAndExecute' });
+    setIsPermissionModalOpen(true);
+  }, []);
+
+  const handleEditPerm = useCallback((path, user, perm) => {
+    setActiveFolder(path);
+    setModalMode('edit');
+    setPermissionForm({ oldUser: user, user: user, perm: perm });
+    setIsPermissionModalOpen(true);
+  }, []);
+
+  const handleDeletePerm = useCallback((path, user, perm) => {
+    if (window.confirm(`${user} kullanıcısının ${perm} yetkisini silmek istediğinize emin misiniz?`)) {
+      if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.postMessage({ command: 'removePermission', data: { path: path, user: user } });
+      }
+    }
+  }, []);
+
+  // HIZLANDIRMA 4: Aşağı kaydırdıkça yükleme dinleyicisi
+  const handleScroll = (e) => {
+    const bottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 400; // Alta 400px kala
+    if (bottom && visibleCount < visibleFolders.length) {
+      setVisibleCount(prev => prev + 100); // 100 tane daha klasör ekle
+    }
   };
 
-  const visibleFolders = filteredData.filter(folder => {
-    if (searchTerm) return true;
-
-    const normalizedPath = folder.path.endsWith('\\') ? folder.path.slice(0, -1) : folder.path;
-    let parentPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('\\'));
-
-    while (parentPath && parentPath.split('\\').filter(Boolean).length >= baseDepth) {
-      if (!expandedFolders.has(parentPath) && !expandedFolders.has(parentPath + '\\')) {
-        return false;
-      }
-      parentPath = parentPath.substring(0, parentPath.lastIndexOf('\\'));
-    }
-
-    return true;
-  });
+  const displayedFolders = visibleFolders.slice(0, visibleCount);
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-800 font-sans text-sm">
@@ -170,12 +345,23 @@ function App() {
                     className="pl-8 pr-3 h-8 w-full border border-slate-300 rounded bg-white text-slate-700 text-sm focus:outline-none"
                   />
                 </div>
+
                 <button
                   onClick={handleScanFolder}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold h-8 px-4 rounded shadow-sm transition-colors text-sm"
+                  disabled={isProcessing}
+                  className={`font-semibold h-8 px-4 rounded shadow-sm transition-colors text-sm flex items-center justify-center gap-2 min-w-[80px] ${isProcessing ? 'bg-emerald-400 text-white cursor-wait' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    }`}
                 >
-                  Seç
+                  {isProcessing ? (
+                    <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  ) : (
+                    'Seç'
+                  )}
                 </button>
+
                 <button
                   onClick={handleClear}
                   className="bg-slate-200 hover:bg-slate-300 text-slate-700 border border-slate-300 font-semibold h-8 px-3 rounded shadow-sm transition-colors flex items-center gap-1.5 text-sm"
@@ -201,25 +387,27 @@ function App() {
 
                 <div className="h-5 w-[1px] bg-slate-300 mx-1 hidden sm:block"></div>
 
-                {/* MERT: ORİJİNAL YEŞİL BUTON VE YANINDAKİ YENİ CHECKBOX */}
-                <button
-                  onClick={() => setShowSubfolders(!showSubfolders)}
-                  className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium h-8 px-3 rounded shadow-sm transition-colors text-xs"
-                >
-                  {showSubfolders ? (
-                    <><span>📂</span> Alt Klasörleri Gizle</>
-                  ) : (
-                    <><span>📁</span> Alt Klasörleri Göster</>
-                  )}
-                </button>
+                {/* YEŞİL BUTON VE CHECKBOX KORUNDU */}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setShowSubfolders(!showSubfolders)}
+                    className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium h-8 px-3 rounded shadow-sm transition-colors text-xs"
+                  >
+                    {showSubfolders ? (
+                      <><span>📂</span> Alt Klasörleri Gizle</>
+                    ) : (
+                      <><span>📁</span> Alt Klasörleri Göster</>
+                    )}
+                  </button>
 
-                <div className="flex items-center justify-center pl-1 pr-2 cursor-pointer" title="Alt klasörleri göster/gizle">
-                  <input
-                    type="checkbox"
-                    checked={showSubfolders}
-                    onChange={(e) => setShowSubfolders(e.target.checked)}
-                    className="w-4 h-4 text-emerald-600 bg-white border-slate-300 rounded focus:ring-emerald-500 cursor-pointer accent-emerald-600"
-                  />
+                  <div className="flex items-center justify-center px-1 cursor-pointer" title="Alt klasörleri göster/gizle">
+                    <input
+                      type="checkbox"
+                      checked={showSubfolders}
+                      onChange={(e) => setShowSubfolders(e.target.checked)}
+                      className="w-4 h-4 text-emerald-600 bg-white border-slate-300 rounded focus:ring-emerald-500 cursor-pointer accent-emerald-600"
+                    />
+                  </div>
                 </div>
 
                 <span className="text-xs font-semibold bg-slate-200 text-slate-800 px-3 h-8 rounded border border-slate-300 flex items-center shadow-sm ml-auto sm:ml-0">
@@ -234,130 +422,43 @@ function App() {
               <div className="w-1/2 py-2 px-4 font-semibold uppercase tracking-wider border-l border-slate-600">İzinli Kullanıcı Kısmı (R/W)</div>
             </div>
 
-            <div className="flex-1 overflow-y-auto bg-white p-0">
+            {/* HIZLANDIRMA 4: onScroll olayı eklendi */}
+            <div className="flex-1 overflow-y-auto bg-white p-0" onScroll={handleScroll}>
               <div className="divide-y divide-slate-100">
                 {visibleData && visibleData.length > 0 ? (
-                  visibleFolders.length > 0 ? (
-                    visibleFolders.map((folder, index) => {
-                      const parts = folder.path.split('\\').filter(Boolean);
-                      const name = parts[parts.length - 1];
-                      const depth = parts.length;
-                      const indent = baseDepth > 0 ? Math.max(0, depth - baseDepth) : 0;
+                  displayedFolders.length > 0 ? (
+                    <>
+                      {displayedFolders.map((folder, index) => {
+                        const indent = baseDepth > 0 ? Math.max(0, folder.path.split('\\').filter(Boolean).length - baseDepth) : 0;
+                        const folderPathForCheck = folder.path.endsWith('\\') ? folder.path : folder.path + '\\';
+                        const hasSubfolders = filteredData.some(f => f.path.startsWith(folderPathForCheck) && f.path !== folder.path);
 
-                      const folderPathForCheck = folder.path.endsWith('\\') ? folder.path : folder.path + '\\';
-                      const hasSubfolders = filteredData.some(f => f.path.startsWith(folderPathForCheck) && f.path !== folder.path);
-                      const isExpanded = expandedFolders.has(folder.path);
+                        return (
+                          <FolderRow
+                            key={index}
+                            folder={folder}
+                            index={index}
+                            indent={indent}
+                            isSelected={selectedFolder === folder.path}
+                            hasSubfolders={hasSubfolders}
+                            isExpanded={expandedFolders.has(folder.path)}
+                            searchTerm={debouncedSearch}
+                            onToggle={handleToggle}
+                            onSelect={handleSelect}
+                            onAddPerm={handleAddPerm}
+                            onEditPerm={handleEditPerm}
+                            onDeletePerm={handleDeletePerm}
+                          />
+                        );
+                      })}
 
-                      return (
-                        <div key={index} className="flex hover:bg-slate-50 transition-colors border-l-2 border-transparent hover:border-emerald-400">
-                          {/* Sol Sütun: Klasör */}
-                          <div className="w-1/2 py-2 px-4 text-slate-700 border-r border-slate-100 flex flex-col justify-center" title={folder.path}>
-                            <div style={{ marginLeft: `${indent * 20}px` }} className="flex items-center justify-between gap-2 pr-1">
-                              <div className="flex items-center gap-2 truncate">
-
-                                {/* Kusursuz Hizalanmış SVG Oklar */}
-                                <div className="w-5 h-5 flex-shrink-0 flex items-center justify-center">
-                                  {hasSubfolders ? (
-                                    <span
-                                      onClick={(e) => toggleFolder(e, folder.path)}
-                                      className="text-emerald-600 cursor-pointer hover:bg-emerald-100 w-full h-full flex items-center justify-center rounded transition-colors"
-                                      title={isExpanded ? "Daralt" : "Genişlet"}
-                                    >
-                                      {isExpanded ? (
-                                        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current"><path d="M5 8h14l-7 11z" /></svg>
-                                      ) : (
-                                        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current"><path d="M8 5v14l11-7z" /></svg>
-                                      )}
-                                    </span>
-                                  ) : (
-                                    <span className="text-slate-300 w-full h-full flex items-center justify-center">
-                                      <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-none stroke-current stroke-2"><path d="M8 5v14l11-7z" strokeLinejoin="round" /></svg>
-                                    </span>
-                                  )}
-                                </div>
-
-                                <span className={`truncate text-sm ${indent === 0 ? 'font-semibold text-slate-800' : 'font-medium text-slate-600'}`}>
-                                  📂 {name || folder.path}
-                                </span>
-                              </div>
-                              <button
-                                onClick={() => {
-                                  setActiveFolder(folder.path);
-                                  setModalMode('add');
-                                  setPermissionForm({ oldUser: '', user: '', perm: 'ReadAndExecute' });
-                                  setIsPermissionModalOpen(true);
-                                }}
-                                className="text-emerald-600 hover:bg-emerald-100 p-1 rounded flex-shrink-0 transition-colors focus:outline-none"
-                                title="Yeni Yetki Ekle"
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-                                  <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
-                                </svg>
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Sağ Sütun: Yetkiler */}
-                          <div className="w-1/2 p-2 flex flex-col gap-1.5">
-                            {folder.permissions
-                              .filter(p => {
-                                if (!searchTerm) return true;
-                                const term = searchTerm.toLowerCase();
-                                if (folder.path.toLowerCase().includes(term)) return true;
-                                return (p.user && p.user.toLowerCase().includes(term)) ||
-                                  (p.perm && p.perm.toLowerCase().includes(term));
-                              })
-                              .map((p, i) => {
-                                const isRisky = (p.user || '').includes('Everyone') || (p.perm || '').includes('Full');
-                                return (
-                                  <div key={i} className={`group flex items-center justify-between px-2.5 py-1.5 rounded border shadow-sm transition-all hover:shadow ${isRisky ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
-                                    <div className="flex items-center gap-1.5 truncate min-w-0 pr-2">
-                                      <span className="text-xs">{isRisky ? '⚠️' : '👤'}</span>
-                                      <span className={`text-xs font-semibold truncate ${isRisky ? 'text-red-700' : 'text-slate-700'}`}>{p.user || '-'}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 flex-shrink-0">
-                                      <span className={`flex items-center justify-center text-[9px] font-bold uppercase text-white px-1.5 py-0.5 rounded min-w-[60px] ${isRisky ? 'bg-red-600' : 'bg-emerald-600'}`}>
-                                        {p.perm || '-'}
-                                      </span>
-                                      <div className="w-4 text-center text-slate-400 text-xs" title="Miras Alınmış Yetki">
-                                        {(p.isInherited === "Evet" || p.isInherited === true) ? "🔄" : "-"}
-                                      </div>
-
-                                      <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button
-                                          onClick={() => {
-                                            setActiveFolder(folder.path);
-                                            setModalMode('edit');
-                                            setPermissionForm({ oldUser: p.user, user: p.user, perm: p.perm });
-                                            setIsPermissionModalOpen(true);
-                                          }}
-                                          className="p-1 text-blue-500 hover:bg-blue-100 rounded transition-colors" title="Yetkiyi Düzenle">
-                                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                          </svg>
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            if (window.confirm(`${p.user} kullanıcısının ${p.perm} yetkisini silmek istediğinize emin misiniz?`)) {
-                                              if (window.chrome && window.chrome.webview) {
-                                                window.chrome.webview.postMessage({ command: 'removePermission', data: { path: folder.path, user: p.user } });
-                                              }
-                                            }
-                                          }}
-                                          className="p-1 text-red-500 hover:bg-red-100 rounded transition-colors" title="Yetkiyi Sil">
-                                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                          </svg>
-                                        </button>
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                          </div>
+                      {/* Yükleniyor Uyarı Çubuğu */}
+                      {visibleCount < visibleFolders.length && (
+                        <div className="p-4 text-center text-slate-500 text-xs bg-slate-50 animate-pulse">
+                          Daha fazla klasör yükleniyor... Aşağı kaydırın.
                         </div>
-                      );
-                    })
+                      )}
+                    </>
                   ) : (
                     <div className="p-12 text-center">
                       <div className="text-4xl opacity-20 mb-3">🔍</div>
@@ -424,7 +525,7 @@ function App() {
             </div>
             <div className="px-5 py-3 bg-white border-t border-slate-100 flex justify-end gap-2">
               <button onClick={() => setIsPermissionModalOpen(false)} className="px-4 py-1.5 rounded text-slate-600 hover:bg-slate-100 text-sm font-medium border border-slate-200">İptal</button>
-              <button disabled={!permissionForm.user.trim()} onClick={() => { /* ... (Mevcut C# Mesajlaşma mantığı) ... */ setIsPermissionModalOpen(false); }} className={`px-4 py-1.5 rounded text-white text-sm font-medium ${!permissionForm.user.trim() ? 'bg-slate-300' : modalMode === 'add' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'}`}>{modalMode === 'add' ? 'Ekle' : 'Kaydet'}</button>
+              <button disabled={!permissionForm.user.trim()} onClick={() => { setIsPermissionModalOpen(false); if (window.chrome && window.chrome.webview) { if (modalMode === 'add') { window.chrome.webview.postMessage({ command: 'addPermission', data: { path: activeFolder, user: permissionForm.user.trim(), perm: permissionForm.perm } }); } else { window.chrome.webview.postMessage({ command: 'editPermission', data: { path: activeFolder, oldUser: permissionForm.oldUser, newUser: permissionForm.user.trim(), perm: permissionForm.perm } }); } } }} className={`px-4 py-1.5 rounded text-white text-sm font-medium ${!permissionForm.user.trim() ? 'bg-slate-300' : modalMode === 'add' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'}`}>{modalMode === 'add' ? 'Ekle' : 'Kaydet'}</button>
             </div>
           </div>
         </div>
