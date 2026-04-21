@@ -35,6 +35,75 @@ public class YetkiServisi
         return liste;
     }
 
+    // =======================================================================
+    // CANLI AKIŞ (STREAMING) VERSİYONU
+    // Her yetki satırı bulunduğunda callback tetiklenir → Form1 buffer'a ekler
+    // Buffer 500'e ulaşınca chunk olarak React'e fırlatılır
+    // =======================================================================
+    public void TekilYetkiGetirStreaming(string yol, Action<YetkiRaporu> onItemFound)
+    {
+        bool klasorMu = Directory.Exists(yol);
+
+        // 1. Ana klasörün kendisini tara, bulunan her yetki için callback tetikle
+        StreamDiziniVeyaDosyayiTara(yol, onItemFound, klasorMu);
+
+        // 2. Alt klasörleri rekürsif olarak güvenle akıt
+        if (klasorMu)
+        {
+            GuvenliAltKlasorTaraStreaming(yol, onItemFound);
+        }
+    }
+
+    /// <summary>
+    /// Alt klasörleri rekürsif tarar. Her yetki satırı bulunduğunda callback tetiklenir.
+    /// Erişim izni olmayan klasörler sessizce atlanır.
+    /// </summary>
+    private void GuvenliAltKlasorTaraStreaming(string mevcutYol, Action<YetkiRaporu> onItemFound)
+    {
+        try
+        {
+            string[] altKlasorler = Directory.GetDirectories(mevcutYol);
+
+            foreach (string altYol in altKlasorler)
+            {
+                StreamDiziniVeyaDosyayiTara(altYol, onItemFound, true);
+                GuvenliAltKlasorTaraStreaming(altYol, onItemFound);
+            }
+        }
+        catch (UnauthorizedAccessException) { }
+        catch (Exception) { }
+    }
+
+    /// <summary>
+    /// Tek bir dizin veya dosyanın yetkilerini okur ve her biri için callback tetikler.
+    /// </summary>
+    private void StreamDiziniVeyaDosyayiTara(string yol, Action<YetkiRaporu> onItemFound, bool klasorMu)
+    {
+        try
+        {
+            System.Security.AccessControl.FileSystemSecurity security;
+            if (klasorMu)
+                security = new DirectoryInfo(yol).GetAccessControl();
+            else
+                security = new FileInfo(yol).GetAccessControl();
+
+            var rules = security.GetAccessRules(true, true, typeof(System.Security.Principal.NTAccount));
+
+            foreach (System.Security.AccessControl.FileSystemAccessRule rule in rules)
+            {
+                onItemFound(new YetkiRaporu
+                {
+                    KlasorYolu = klasorMu ? yol : "[DOSYA] " + Path.GetFileName(yol),
+                    KullaniciAdi = rule.IdentityReference.Value,
+                    YetkiTuru = rule.FileSystemRights.ToString(),
+                    IzinDurumu = rule.AccessControlType.ToString(),
+                    MirasMi = rule.IsInherited ? "Evet" : "Hayır"
+                });
+            }
+        }
+        catch { }
+    }
+
     /// <summary>
     /// SearchOption.AllDirectories kullanımı erişim olmayan klasörlerde (UnauthorizedAccessException) 
     /// tüm taramayı durduracağı için, bu işlemi manuel recursive ve try-catch bloklarıyla yapıyoruz.

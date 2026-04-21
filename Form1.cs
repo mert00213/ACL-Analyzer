@@ -110,33 +110,69 @@ public partial class Form1 : Form
         }
     }
 
-    // 95.000 DOSYA İÇİN ÖZEL OPTİMİZASYON METODU
+    // =======================================================================
+    // CANLI AKIŞ (LIVE STREAMING) MİMARİSİ
+    // Eski sistem: Tüm veriyi tara → devasa JSON yap → tek seferde gönder (ÖLÜ ZAMAN!)
+    // Yeni sistem: 500'erli paketler halinde canlı canlı React'e akıt (SIFIR BEKLEMESİ!)
+    // =======================================================================
+    private const int CHUNK_SIZE = 500; // Her paketteki satır sayısı
+
     private async Task RunOptimizedScan(string folderPath)
     {
-        SendMessageToFrontend("status", "🔄 Tarama Başladı. Dosyalar işleniyor...");
+        SendMessageToFrontend("status", "🔄 Tarama Başladı. Canlı akış modunda veriler yükleniyor...");
 
         try
         {
-            // OPTİMİZASYON: UI (Ekran) donmaması için Task.Run ile arka planda tara
-            _tumVeriler = await Task.Run(() => _yetkiServisi.TekilYetkiGetir(folderPath));
+            _tumVeriler = new List<YetkiRaporu>();
+            var chunkBuffer = new List<object>(CHUNK_SIZE);
 
-            // Verileri React'ın anlayacağı şık formata çevir
-            var results = new
+            await Task.Run(() =>
+            {
+                // Rekürsif tarama — her yetki satırı bulunduğunda buffer'a ekle
+                _yetkiServisi.TekilYetkiGetirStreaming(folderPath, (yetkiRaporu) =>
+                {
+                    // Kalıcı listeye ekle (PDF/Excel export için lazım)
+                    _tumVeriler.Add(yetkiRaporu);
+
+                    // Buffer'a React formatında ekle
+                    chunkBuffer.Add(new
+                    {
+                        path = yetkiRaporu.KlasorYolu,
+                        user = yetkiRaporu.KullaniciAdi,
+                        perm = yetkiRaporu.YetkiTuru,
+                        isInherited = yetkiRaporu.MirasMi
+                    });
+
+                    // Buffer doldu mu? → 500'lük paketi React'e fırlat!
+                    if (chunkBuffer.Count >= CHUNK_SIZE)
+                    {
+                        var chunkData = new { items = chunkBuffer.ToArray() };
+                        string json = JsonSerializer.Serialize(chunkData);
+                        
+                        // UI thread üzerinden WebView2'ye gönder
+                        _webView.Invoke(() => SendMessageToFrontend("scanChunk", json));
+                        
+                        chunkBuffer.Clear();
+                    }
+                });
+            });
+
+            // Son kalan verileri gönder (500'den az kalmış olabilir)
+            if (chunkBuffer.Count > 0)
+            {
+                var lastChunk = new { items = chunkBuffer.ToArray() };
+                string lastJson = JsonSerializer.Serialize(lastChunk);
+                SendMessageToFrontend("scanChunk", lastJson);
+                chunkBuffer.Clear();
+            }
+
+            // Tarama bitti sinyali — React Worker son sıralama + state kilidi açar
+            SendMessageToFrontend("scanComplete", JsonSerializer.Serialize(new
             {
                 totalFiles = _tumVeriler.Count,
                 criticalFound = _tumVeriler.Count(x => x.KullaniciAdi.Contains("Everyone") && x.YetkiTuru.Contains("Full")),
-                scanDate = DateTime.Now.ToString("dd.MM.yyyy HH:mm"),
-                details = _tumVeriler.Take(500).Select(x => new { // Performans için ilk 500'ü hemen göster
-                    path = x.KlasorYolu,
-                    user = x.KullaniciAdi,
-                    perm = x.YetkiTuru,
-                    isInherited = x.MirasMi
-                })
-            };
-
-            // React'ın beklediği scanComplete nesnesi olarak fırlat
-            string jsonResponse = JsonSerializer.Serialize(results);
-            SendMessageToFrontend("scanComplete", jsonResponse);
+                scanDate = DateTime.Now.ToString("dd.MM.yyyy HH:mm")
+            }));
             SendMessageToFrontend("success", "✅ Tarama Tamamlandı!");
         }
         catch (Exception ex)

@@ -115,6 +115,9 @@ function App() {
   const [isExitModalOpen, setIsExitModalOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // MERT: Canlı Akış (Live Streaming) durumu — C# chunk yolladıkça true kalır
+  const [isStreaming, setIsStreaming] = useState(false);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
@@ -139,8 +142,8 @@ function App() {
   }, [searchTerm]);
 
   useEffect(() => {
-    setVisibleCount(50); // Arama değiştiğinde veya yeni klasör açıldığında limiti 50'ye çek (Işık hızı render)
-  }, [debouncedSearch, expandedFolders, scanData]);
+    setVisibleCount(50);
+  }, [debouncedSearch, expandedFolders]);
 
   const getCommonPath = (details) => {
     if (!details || details.length === 0) return '';
@@ -157,28 +160,56 @@ function App() {
     return common.length > 0 ? common.join('\\') + '\\' : '';
   };
 
-  const commonPath = useMemo(() => getCommonPath(scanData.details), [scanData.details]);
+  const commonPath = useMemo(() => getCommonPath(groupedData), [groupedData]);
 
-  // Web Worker (C#'tan gelen veriyi arka planda donmadan çözer)
+  // =======================================================================
+  // MERT: CANLI AKIŞ (LIVE STREAMING) WEB WORKER MİMARİSİ
+  // C#'tan 500'erli scanChunk paketleri gelir → Worker Map'e merge eder →
+  // Main Thread groupedData state'ini günceller → Ekran canlı canlı dolar
+  // =======================================================================
   useEffect(() => {
     const workerCode = `
+      // Worker içindeki kalıcı Map — her chunk buraya eklenir, hiçbir veri kaybolmaz
+      const masterMap = new Map();
+
       self.onmessage = function(e) {
-        const payload = e.data;
-        try {
-          const parsedData = JSON.parse(payload);
-          const map = new Map();
-          for (let i = 0; i < parsedData.details.length; i++) {
-            const item = parsedData.details[i];
-            if (!map.has(item.path)) {
-              map.set(item.path, { path: item.path, permissions: [] });
+        const msg = e.data;
+
+        // ── scanChunk: C#'tan gelen 500'lük parça veriyi Map'e merge et ──
+        if (msg.type === 'chunk') {
+          try {
+            const items = msg.items; // Zaten parse edilmiş array
+            for (let i = 0; i < items.length; i++) {
+              const item = items[i];
+              if (!masterMap.has(item.path)) {
+                masterMap.set(item.path, { path: item.path, permissions: [] });
+              }
+              masterMap.get(item.path).permissions.push({
+                user: item.user,
+                perm: item.perm,
+                isInherited: item.isInherited
+              });
             }
-            map.get(item.path).permissions.push({ user: item.user, perm: item.perm, isInherited: item.isInherited });
+            // Map'i sıralı diziye çevir ve Main Thread'e yolla
+            let result = Array.from(masterMap.values());
+            result.sort((a, b) => (a.path > b.path ? 1 : (a.path < b.path ? -1 : 0)));
+            self.postMessage({ status: 'chunk_merged', groupedResult: result, totalPaths: masterMap.size });
+          } catch (err) {
+            self.postMessage({ status: 'error', error: err.message });
           }
-          let result = Array.from(map.values());
+        }
+
+        // ── scanComplete: Tarama bitti, son kez sıralı veriyi gönder ──
+        else if (msg.type === 'complete') {
+          let result = Array.from(masterMap.values());
           result.sort((a, b) => (a.path > b.path ? 1 : (a.path < b.path ? -1 : 0)));
-          self.postMessage({ status: 'success', parsedData, groupedResult: result });
-        } catch (err) {
-          self.postMessage({ status: 'error', error: err.message });
+          self.postMessage({ status: 'scan_complete', groupedResult: result, totalPaths: masterMap.size });
+        }
+
+        // ── reset: Yeni tarama başlatılırken eski veriyi temizle ──
+        else if (msg.type === 'reset') {
+          masterMap.clear();
+          self.postMessage({ status: 'reset_done' });
         }
       };
     `;
@@ -187,31 +218,77 @@ function App() {
     const workerUrl = URL.createObjectURL(blob);
     const worker = new Worker(workerUrl);
 
+    // Worker → Main Thread mesaj alıcı
     worker.onmessage = (e) => {
-      const { status, parsedData, groupedResult, error } = e.data;
-      if (status === 'success') {
-        setScanData(parsedData);
+      const { status, groupedResult, totalPaths, error } = e.data;
+
+      if (status === 'chunk_merged') {
+        // Chunk merge edildi → groupedData'yı güncelle (ekran canlı canlı dolar)
         setGroupedData(groupedResult);
-        setExpandedFolders(new Set());
+        setScanData(prev => ({ ...prev, totalFiles: totalPaths }));
+      }
+      else if (status === 'scan_complete') {
+        // Tarama bitti → son veriyi yaz, streaming'i kapat
+        setGroupedData(groupedResult);
+        setScanData(prev => ({
+          ...prev,
+          totalFiles: totalPaths,
+          scanDate: new Date().toLocaleString('tr-TR')
+        }));
+        setIsStreaming(false);
         setIsProcessing(false);
-      } else {
+      }
+      else if (status === 'reset_done') {
+        setGroupedData([]);
+      }
+      else if (status === 'error') {
         console.error("Worker Hatası:", error);
-        alert("Veri işlenirken bir hata oluştu.");
+        setIsStreaming(false);
         setIsProcessing(false);
       }
     };
 
+    // C# → React mesaj alıcı (backendMessage CustomEvent)
     const handleBackendMessage = (event) => {
       const { type, data } = event.detail;
-      if (type === 'scanComplete') {
-        worker.postMessage(data);
-      } else if (type === 'error') {
+
+      // ── scanChunk: C#'tan 500'lük paket geldi ──
+      if (type === 'scanChunk') {
+        try {
+          const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+          // items dizisini Worker'a at
+          worker.postMessage({ type: 'chunk', items: parsed.items || parsed.details || parsed });
+        } catch (err) {
+          console.error('scanChunk parse hatası:', err);
+        }
+      }
+      // ── scanComplete: C# taramayı bitirdi ──
+      else if (type === 'scanComplete') {
+        // Geriye dönük uyumluluk: Eğer eski tek-seferde veri geldiyse onu da çöz
+        try {
+          const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+          if (parsed.details && parsed.details.length > 0) {
+            worker.postMessage({ type: 'chunk', items: parsed.details });
+          }
+        } catch (err) { /* Sadece sinyal olarak gelmiş olabilir */ }
+        worker.postMessage({ type: 'complete' });
+      }
+      // ── scanEnd: Alternatif bitiş sinyali ──
+      else if (type === 'scanEnd') {
+        worker.postMessage({ type: 'complete' });
+      }
+      // ── error: Hata mesajı ──
+      else if (type === 'error') {
         alert("Bir Hata Oluştu: " + data);
+        setIsStreaming(false);
         setIsProcessing(false);
       }
     };
 
     window.addEventListener('backendMessage', handleBackendMessage);
+
+    // Worker referansını ref'e kaydet (handleScanFolder'dan erişim için)
+    workerRef.current = worker;
 
     return () => {
       window.removeEventListener('backendMessage', handleBackendMessage);
@@ -219,6 +296,8 @@ function App() {
       URL.revokeObjectURL(workerUrl);
     };
   }, []);
+
+  const workerRef = useRef(null);
 
   const baseDepth = useMemo(() => {
     if (groupedData.length === 0) return 0;
@@ -231,23 +310,43 @@ function App() {
   }, [groupedData, showSubfolders, baseDepth]);
 
   const handleScanFolder = () => {
+    // Eski veriyi temizle, streaming'i başlat
+    setGroupedData([]);
+    setScanData({ totalFiles: 0, criticalFound: 0, scanDate: '-', details: [] });
+    setExpandedFolders(new Set());
+    setSelectedFolder(null);
+    setVisibleCount(50);
     setIsProcessing(true);
+    setIsStreaming(true);
+
+    // Worker'daki Map'i sıfırla
+    if (workerRef.current) {
+      workerRef.current.postMessage({ type: 'reset' });
+    }
+
     if (window.chrome && window.chrome.webview) {
       window.chrome.webview.postMessage({ command: "scanFolder", data: { path: "C:\\" } });
     } else {
       alert("Bu özellik yalnızca uygulamanın (WebView2) içindeyken çalışır.");
       setIsProcessing(false);
+      setIsStreaming(false);
     }
   };
 
   const handleClear = () => {
     setScanData({ totalFiles: 0, criticalFound: 0, scanDate: '-', details: [] });
+    setGroupedData([]);
     setSearchTerm('');
     setDebouncedSearch('');
     setExpandedFolders(new Set());
     setSelectedFolder(null);
     setIsExitModalOpen(false);
     setIsPermissionModalOpen(false);
+    setIsStreaming(false);
+    setIsProcessing(false);
+    if (workerRef.current) {
+      workerRef.current.postMessage({ type: 'reset' });
+    }
   };
 
   const filteredData = useMemo(() => visibleData.filter(folder => {
@@ -282,7 +381,6 @@ function App() {
     const parents = new Set();
     for (let i = 0; i < filteredData.length; i++) {
       const parts = filteredData[i].path.replace(/\\$/, '').split('\\');
-      // Her path'in parent'ını set'e ekle
       if (parts.length > 1) {
         const parentPath = parts.slice(0, -1).join('\\');
         parents.add(parentPath);
@@ -346,7 +444,7 @@ function App() {
           });
         }
       },
-      { rootMargin: '400px' } // 400px önceden tetikle (kullanıcı fark etmeden yükle)
+      { rootMargin: '400px' }
     );
 
     observer.observe(sentinel);
@@ -445,6 +543,17 @@ function App() {
                 <span className="text-xs font-semibold bg-slate-200 text-slate-800 px-3 h-8 rounded border border-slate-300 flex items-center shadow-sm ml-auto sm:ml-0">
                   Girdi: {visibleData.length} Dizin
                 </span>
+
+                {/* MERT: Canlı Akış Göstergesi — disk taranırken animasyonlu bildirim */}
+                {isStreaming && (
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 h-8 rounded shadow-sm animate-pulse">
+                    <svg className="animate-spin h-3 w-3 text-emerald-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Disk taranıyor... {scanData.totalFiles} dizin bulundu
+                  </span>
+                )}
               </div>
             </div>
 
@@ -454,7 +563,7 @@ function App() {
               <div className="w-1/2 py-2 px-4 font-semibold uppercase tracking-wider border-l border-slate-600">İzinli Kullanıcı Kısmı (R/W)</div>
             </div>
 
-            {/* Liste Alanı — onScroll kaldırıldı, IntersectionObserver sentinel kullanılıyor */}
+            {/* Liste Alanı — IntersectionObserver sentinel kullanılıyor */}
             <div className="flex-1 bg-white relative overflow-y-auto">
               <div className="flex flex-col">
                 {visibleData && visibleData.length > 0 ? (
