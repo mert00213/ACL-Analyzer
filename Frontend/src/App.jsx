@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react'
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import './App.css'
@@ -109,16 +109,24 @@ const FolderRow = React.memo(({
 
 function App() {
   const [scanData, setScanData] = useState({ totalFiles: 0, criticalFound: 0, scanDate: '-', details: [] });
+  const [groupedData, setGroupedData] = useState([]);
 
   const [showSubfolders, setShowSubfolders] = useState(true);
   const [isExitModalOpen, setIsExitModalOpen] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false); // Animasyon durumu geri eklendi
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
   const [expandedFolders, setExpandedFolders] = useState(new Set());
   const [selectedFolder, setSelectedFolder] = useState(null);
+
+  // MERT: Micro-Chunking Limiti (Sadece 50 satırla başlar, anında açılır!)
+  const [visibleCount, setVisibleCount] = useState(50);
+
+  // MERT: IntersectionObserver Sentinel Ref (Scroll event yerine native gözlemci)
+  const sentinelRef = useRef(null);
+  const loadingRef = useRef(false); // rAF throttle kilidi
 
   const [isPermissionModalOpen, setIsPermissionModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState('add');
@@ -129,6 +137,10 @@ function App() {
     const timer = setTimeout(() => setDebouncedSearch(searchTerm), 200);
     return () => clearTimeout(timer);
   }, [searchTerm]);
+
+  useEffect(() => {
+    setVisibleCount(50); // Arama değiştiğinde veya yeni klasör açıldığında limiti 50'ye çek (Işık hızı render)
+  }, [debouncedSearch, expandedFolders, scanData]);
 
   const getCommonPath = (details) => {
     if (!details || details.length === 0) return '';
@@ -147,20 +159,66 @@ function App() {
 
   const commonPath = useMemo(() => getCommonPath(scanData.details), [scanData.details]);
 
-  const groupedData = useMemo(() => {
-    if (!scanData.details) return [];
-    const map = new Map();
-    for (let i = 0; i < scanData.details.length; i++) {
-      const item = scanData.details[i];
-      if (!map.has(item.path)) {
-        map.set(item.path, { path: item.path, permissions: [] });
+  // Web Worker (C#'tan gelen veriyi arka planda donmadan çözer)
+  useEffect(() => {
+    const workerCode = `
+      self.onmessage = function(e) {
+        const payload = e.data;
+        try {
+          const parsedData = JSON.parse(payload);
+          const map = new Map();
+          for (let i = 0; i < parsedData.details.length; i++) {
+            const item = parsedData.details[i];
+            if (!map.has(item.path)) {
+              map.set(item.path, { path: item.path, permissions: [] });
+            }
+            map.get(item.path).permissions.push({ user: item.user, perm: item.perm, isInherited: item.isInherited });
+          }
+          let result = Array.from(map.values());
+          result.sort((a, b) => (a.path > b.path ? 1 : (a.path < b.path ? -1 : 0)));
+          self.postMessage({ status: 'success', parsedData, groupedResult: result });
+        } catch (err) {
+          self.postMessage({ status: 'error', error: err.message });
+        }
+      };
+    `;
+
+    const blob = new Blob([workerCode], { type: 'application/javascript' });
+    const workerUrl = URL.createObjectURL(blob);
+    const worker = new Worker(workerUrl);
+
+    worker.onmessage = (e) => {
+      const { status, parsedData, groupedResult, error } = e.data;
+      if (status === 'success') {
+        setScanData(parsedData);
+        setGroupedData(groupedResult);
+        setExpandedFolders(new Set());
+        setIsProcessing(false);
+      } else {
+        console.error("Worker Hatası:", error);
+        alert("Veri işlenirken bir hata oluştu.");
+        setIsProcessing(false);
       }
-      map.get(item.path).permissions.push({ user: item.user, perm: item.perm, isInherited: item.isInherited });
-    }
-    let result = Array.from(map.values());
-    result.sort((a, b) => (a.path > b.path ? 1 : (a.path < b.path ? -1 : 0)));
-    return result;
-  }, [scanData.details]);
+    };
+
+    const handleBackendMessage = (event) => {
+      const { type, data } = event.detail;
+      if (type === 'scanComplete') {
+        worker.postMessage(data);
+      } else if (type === 'error') {
+        alert("Bir Hata Oluştu: " + data);
+        setIsProcessing(false);
+      }
+    };
+
+    window.addEventListener('backendMessage', handleBackendMessage);
+
+    return () => {
+      window.removeEventListener('backendMessage', handleBackendMessage);
+      worker.terminate();
+      URL.revokeObjectURL(workerUrl);
+    };
+  }, []);
 
   const baseDepth = useMemo(() => {
     if (groupedData.length === 0) return 0;
@@ -172,31 +230,8 @@ function App() {
     return groupedData.filter(r => r.path.split('\\').filter(Boolean).length === baseDepth);
   }, [groupedData, showSubfolders, baseDepth]);
 
-  useEffect(() => {
-    const handleBackendMessage = (event) => {
-      const { type, data } = event.detail;
-      if (type === 'scanComplete') {
-        try {
-          const parsedData = JSON.parse(data);
-          setScanData(parsedData);
-          setExpandedFolders(new Set());
-        } catch (error) {
-          console.error("Parse Error:", error);
-          alert("Veri okunamadı.");
-        } finally {
-          setIsProcessing(false); // Veri gelince animasyonu durdurur
-        }
-      } else if (type === 'error') {
-        alert("Bir Hata Oluştu: " + data);
-        setIsProcessing(false);
-      }
-    };
-    window.addEventListener('backendMessage', handleBackendMessage);
-    return () => window.removeEventListener('backendMessage', handleBackendMessage);
-  }, []);
-
   const handleScanFolder = () => {
-    setIsProcessing(true); // Tuşa basıldığında animasyonu başlatır
+    setIsProcessing(true);
     if (window.chrome && window.chrome.webview) {
       window.chrome.webview.postMessage({ command: "scanFolder", data: { path: "C:\\" } });
     } else {
@@ -242,6 +277,21 @@ function App() {
     return result;
   }, [filteredData, debouncedSearch, expandedFolders]);
 
+  // MERT: hasSubfolders için O(1) Set lookup (eskisi her satır için O(n) tarama yapıyordu!)
+  const parentPathSet = useMemo(() => {
+    const parents = new Set();
+    for (let i = 0; i < filteredData.length; i++) {
+      const parts = filteredData[i].path.replace(/\\$/, '').split('\\');
+      // Her path'in parent'ını set'e ekle
+      if (parts.length > 1) {
+        const parentPath = parts.slice(0, -1).join('\\');
+        parents.add(parentPath);
+        parents.add(parentPath + '\\');
+      }
+    }
+    return parents;
+  }, [filteredData]);
+
   const handleToggle = useCallback((e, path) => {
     e.stopPropagation();
     setExpandedFolders(prev => {
@@ -276,7 +326,34 @@ function App() {
     }
   }, []);
 
-  const displayedFolders = visibleFolders.slice(0, 5000);
+  // MERT: IntersectionObserver — scroll event yerine GPU-hızında native gözlemci
+  // Sentinel div görünür olduğu anda 50 satır daha yükler, rAF ile throttle eder
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !loadingRef.current) {
+          loadingRef.current = true;
+          requestAnimationFrame(() => {
+            setVisibleCount(prev => {
+              const total = visibleFolders.length;
+              if (prev >= total) return prev;
+              return Math.min(prev + 50, total);
+            });
+            loadingRef.current = false;
+          });
+        }
+      },
+      { rootMargin: '400px' } // 400px önceden tetikle (kullanıcı fark etmeden yükle)
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [visibleFolders.length]);
+
+  const displayedFolders = visibleFolders.slice(0, visibleCount);
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-800 font-sans text-sm">
@@ -302,7 +379,6 @@ function App() {
                   />
                 </div>
 
-                {/* DİNAMİK SEÇ BUTONU VE ANİMASYON GERİ GELDİ */}
                 <button
                   onClick={handleScanFolder}
                   disabled={isProcessing}
@@ -378,34 +454,44 @@ function App() {
               <div className="w-1/2 py-2 px-4 font-semibold uppercase tracking-wider border-l border-slate-600">İzinli Kullanıcı Kısmı (R/W)</div>
             </div>
 
-            {/* Liste Alanı */}
+            {/* Liste Alanı — onScroll kaldırıldı, IntersectionObserver sentinel kullanılıyor */}
             <div className="flex-1 bg-white relative overflow-y-auto">
               <div className="flex flex-col">
                 {visibleData && visibleData.length > 0 ? (
                   displayedFolders.length > 0 ? (
-                    displayedFolders.map((folder, index) => {
-                      const indent = baseDepth > 0 ? Math.max(0, folder.path.split('\\').filter(Boolean).length - baseDepth) : 0;
-                      const folderPathForCheck = folder.path.endsWith('\\') ? folder.path : folder.path + '\\';
-                      const hasSubfolders = filteredData.some(f => f.path.startsWith(folderPathForCheck) && f.path !== folder.path);
+                    <>
+                      {displayedFolders.map((folder) => {
+                        const indent = baseDepth > 0 ? Math.max(0, folder.path.split('\\').filter(Boolean).length - baseDepth) : 0;
+                        // O(1) Set lookup — eski .some() O(n) taraması yerine
+                        const normalizedPath = folder.path.replace(/\\$/, '');
+                        const hasSubfolders = parentPathSet.has(normalizedPath) || parentPathSet.has(normalizedPath + '\\');
 
-                      return (
-                        <FolderRow
-                          key={index}
-                          folder={folder}
-                          index={index}
-                          indent={indent}
-                          isSelected={selectedFolder === folder.path}
-                          hasSubfolders={hasSubfolders}
-                          isExpanded={expandedFolders.has(folder.path)}
-                          searchTerm={debouncedSearch}
-                          onToggle={handleToggle}
-                          onSelect={handleSelect}
-                          onAddPerm={handleAddPerm}
-                          onEditPerm={handleEditPerm}
-                          onDeletePerm={handleDeletePerm}
-                        />
-                      );
-                    })
+                        return (
+                          <FolderRow
+                            key={folder.path}
+                            folder={folder}
+                            index={0}
+                            indent={indent}
+                            isSelected={selectedFolder === folder.path}
+                            hasSubfolders={hasSubfolders}
+                            isExpanded={expandedFolders.has(folder.path)}
+                            searchTerm={debouncedSearch}
+                            onToggle={handleToggle}
+                            onSelect={handleSelect}
+                            onAddPerm={handleAddPerm}
+                            onEditPerm={handleEditPerm}
+                            onDeletePerm={handleDeletePerm}
+                          />
+                        );
+                      })}
+                      {/* Sentinel div — IntersectionObserver bu div'i gözlemler */}
+                      <div ref={sentinelRef} style={{ height: 1 }} />
+                      {visibleCount < visibleFolders.length && (
+                        <div className="p-4 text-center text-emerald-600 text-xs bg-slate-50 border-t border-slate-100 font-semibold animate-pulse">
+                          Daha fazla klasör yükleniyor... Aşağı kaydırın.
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <div className="p-12 text-center">
                       <div className="text-4xl opacity-20 mb-3">🔍</div>
