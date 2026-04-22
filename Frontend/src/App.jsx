@@ -277,6 +277,10 @@ function App() {
       else if (type === 'scanEnd') {
         worker.postMessage({ type: 'complete' });
       }
+      // ── success: Başarı mesajı (yetki ekleme/silme/düzenleme geri bildirimi) ──
+      else if (type === 'success') {
+        alert(data);
+      }
       // ── error: Hata mesajı ──
       else if (type === 'error') {
         alert("Bir Hata Oluştu: " + data);

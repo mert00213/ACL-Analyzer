@@ -22,6 +22,9 @@ public partial class Form1 : Form
     private const string CMD_EXPORT_PDF = "exportPdf";
     private const string CMD_EXPORT_EXCEL = "exportExcel";
     private const string CMD_EXIT_APP = "exitApp";
+    private const string CMD_ADD_PERMISSION = "addPermission";
+    private const string CMD_EDIT_PERMISSION = "editPermission";
+    private const string CMD_REMOVE_PERMISSION = "removePermission";
 
     public Form1()
     {
@@ -71,13 +74,23 @@ public partial class Form1 : Form
     {
         try
         {
-            // React'tan gelen veriyi JSON zırhıyla güvenli okuyoruz
             string rawMessage = e.WebMessageAsJson;
             
-            if (!string.IsNullOrEmpty(rawMessage))
+            if (string.IsNullOrEmpty(rawMessage))
+                return;
+
+            // JSON'ı güvenli şekilde parse et — React'ten gelen { command, data } yapısını oku
+            using var doc = JsonDocument.Parse(rawMessage);
+            var root = doc.RootElement;
+
+            string command = root.TryGetProperty("command", out var cmdProp)
+                ? cmdProp.GetString() ?? ""
+                : "";
+
+            switch (command)
             {
-                if (rawMessage.Contains("scanFolder") || rawMessage.Contains("open_folder_picker"))
-                {
+                case CMD_SCAN_FOLDER:
+                case "open_folder_picker":
                     using (var fbd = new FolderBrowserDialog())
                     {
                         fbd.Description = "Lütfen Taramak İstediğiniz Ana Klasörü Seçin";
@@ -89,24 +102,186 @@ public partial class Form1 : Form
                             await RunOptimizedScan(fbd.SelectedPath);
                         }
                     }
-                }
-                else if (rawMessage.Contains(CMD_EXPORT_PDF))
-                {
+                    break;
+
+                case CMD_ADD_PERMISSION:
+                    HandleAddPermission(root);
+                    break;
+
+                case CMD_EDIT_PERMISSION:
+                    HandleEditPermission(root);
+                    break;
+
+                case CMD_REMOVE_PERMISSION:
+                    HandleRemovePermission(root);
+                    break;
+
+                case CMD_EXPORT_PDF:
                     ExportToPdf();
-                }
-                else if (rawMessage.Contains(CMD_EXPORT_EXCEL))
-                {
+                    break;
+
+                case CMD_EXPORT_EXCEL:
                     ExportToExcel();
-                }
-                else if (rawMessage.Contains(CMD_EXIT_APP))
-                {
+                    break;
+
+                case CMD_EXIT_APP:
                     Application.Exit();
-                }
+                    break;
             }
         }
         catch (Exception ex)
         {
-            SendMessageToFrontend("error", ex.Message);
+            SendMessageToFrontend("error", $"Komut işlenirken hata: {ex.Message}");
+        }
+    }
+
+    // =======================================================================
+    // YETKİ EKLEME — addPermission
+    // React'ten: { command: "addPermission", data: { path, user, perm } }
+    // =======================================================================
+    private void HandleAddPermission(JsonElement root)
+    {
+        try
+        {
+            if (!root.TryGetProperty("data", out var data))
+            {
+                SendMessageToFrontend("error", "Yetki ekle: 'data' alanı eksik.");
+                return;
+            }
+
+            string path = data.GetProperty("path").GetString() ?? "";
+            string user = data.GetProperty("user").GetString() ?? "";
+            string perm = data.GetProperty("perm").GetString() ?? "ReadAndExecute";
+
+            if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(user))
+            {
+                SendMessageToFrontend("error", "Yetki ekle: Klasör yolu veya kullanıcı adı boş olamaz.");
+                return;
+            }
+
+            _yetkiServisi.YetkiEkle(path, user, perm, "Allow");
+            SendMessageToFrontend("success", $"✅ '{user}' kullanıcısına '{perm}' yetkisi başarıyla eklendi.");
+        }
+        catch (System.Security.Principal.IdentityNotMappedException ex)
+        {
+            SendMessageToFrontend("error", $"Kullanıcı bulunamadı: '{ex.Message}'. Lütfen geçerli bir kullanıcı adı girin (Örn: DOMAIN\\Kullanici).");
+        }
+        catch (System.Security.AccessControl.PrivilegeNotHeldException)
+        {
+            SendMessageToFrontend("error", "Yetki Hatası: Bu işlem için gerekli Windows ayrıcalığına sahip değilsiniz. Uygulamayı Yönetici olarak çalıştırın.");
+        }
+        catch (UnauthorizedAccessException)
+        {
+            SendMessageToFrontend("error", "Erişim Reddedildi: Bu klasördeki yetkileri değiştirmek için Yönetici (Administrator) olarak çalıştırmanız gerekiyor.");
+        }
+        catch (ArgumentException ex)
+        {
+            SendMessageToFrontend("error", $"Geçersiz parametre: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            SendMessageToFrontend("error", $"Yetki eklenirken beklenmeyen hata: {ex.GetType().Name} — {ex.Message}");
+        }
+    }
+
+    // =======================================================================
+    // YETKİ DÜZENLEME — editPermission
+    // React'ten: { command: "editPermission", data: { path, oldUser, newUser, perm } }
+    // Strateji: Eski kullanıcının tüm kurallarını sil → Yeni kullanıcıyla yeni kural ekle
+    // =======================================================================
+    private void HandleEditPermission(JsonElement root)
+    {
+        try
+        {
+            if (!root.TryGetProperty("data", out var data))
+            {
+                SendMessageToFrontend("error", "Yetki düzenle: 'data' alanı eksik.");
+                return;
+            }
+
+            string path = data.GetProperty("path").GetString() ?? "";
+            string oldUser = data.GetProperty("oldUser").GetString() ?? "";
+            string newUser = data.GetProperty("newUser").GetString() ?? "";
+            string perm = data.GetProperty("perm").GetString() ?? "ReadAndExecute";
+
+            if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(oldUser) || string.IsNullOrWhiteSpace(newUser))
+            {
+                SendMessageToFrontend("error", "Yetki düzenle: Klasör yolu, eski kullanıcı veya yeni kullanıcı adı boş olamaz.");
+                return;
+            }
+
+            // 1. Eski kullanıcının bu path üzerindeki tüm kurallarını kaldır
+            _yetkiServisi.KullanicininTumYetkileriniSil(path, oldUser);
+
+            // 2. Yeni kullanıcıyla yeni yetki ekle
+            _yetkiServisi.YetkiEkle(path, newUser, perm, "Allow");
+
+            SendMessageToFrontend("success", $"✅ '{oldUser}' → '{newUser}' olarak güncellendi. Yeni yetki: {perm}");
+        }
+        catch (System.Security.Principal.IdentityNotMappedException ex)
+        {
+            SendMessageToFrontend("error", $"Kullanıcı bulunamadı: '{ex.Message}'. Lütfen geçerli bir kullanıcı adı girin.");
+        }
+        catch (System.Security.AccessControl.PrivilegeNotHeldException)
+        {
+            SendMessageToFrontend("error", "Yetki Hatası: Bu işlem için gerekli Windows ayrıcalığına sahip değilsiniz. Uygulamayı Yönetici olarak çalıştırın.");
+        }
+        catch (UnauthorizedAccessException)
+        {
+            SendMessageToFrontend("error", "Erişim Reddedildi: Bu klasördeki yetkileri değiştirmek için Yönetici (Administrator) olarak çalıştırmanız gerekiyor.");
+        }
+        catch (ArgumentException ex)
+        {
+            SendMessageToFrontend("error", $"Geçersiz parametre: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            SendMessageToFrontend("error", $"Yetki düzenlenirken beklenmeyen hata: {ex.GetType().Name} — {ex.Message}");
+        }
+    }
+
+    // =======================================================================
+    // YETKİ SİLME — removePermission
+    // React'ten: { command: "removePermission", data: { path, user } }
+    // Kullanıcının o path üzerindeki TÜM yetkilerini siler
+    // =======================================================================
+    private void HandleRemovePermission(JsonElement root)
+    {
+        try
+        {
+            if (!root.TryGetProperty("data", out var data))
+            {
+                SendMessageToFrontend("error", "Yetki sil: 'data' alanı eksik.");
+                return;
+            }
+
+            string path = data.GetProperty("path").GetString() ?? "";
+            string user = data.GetProperty("user").GetString() ?? "";
+
+            if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(user))
+            {
+                SendMessageToFrontend("error", "Yetki sil: Klasör yolu veya kullanıcı adı boş olamaz.");
+                return;
+            }
+
+            _yetkiServisi.KullanicininTumYetkileriniSil(path, user);
+            SendMessageToFrontend("success", $"✅ '{user}' kullanıcısının tüm yetkileri başarıyla silindi.");
+        }
+        catch (System.Security.AccessControl.PrivilegeNotHeldException)
+        {
+            SendMessageToFrontend("error", "Yetki Hatası: Bu işlem için gerekli Windows ayrıcalığına sahip değilsiniz. Uygulamayı Yönetici olarak çalıştırın.");
+        }
+        catch (UnauthorizedAccessException)
+        {
+            SendMessageToFrontend("error", "Erişim Reddedildi: Bu klasördeki yetkileri değiştirmek için Yönetici (Administrator) olarak çalıştırmanız gerekiyor.");
+        }
+        catch (InvalidOperationException ex)
+        {
+            SendMessageToFrontend("error", $"İşlem başarısız: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            SendMessageToFrontend("error", $"Yetki silinirken beklenmeyen hata: {ex.GetType().Name} — {ex.Message}");
         }
     }
 

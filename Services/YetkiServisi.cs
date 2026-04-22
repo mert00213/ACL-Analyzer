@@ -188,64 +188,172 @@ public class YetkiServisi
         catch { }
     }
 
-    // --- 2. YAZMA VE SİLME İŞLEMLERİ (Yeni Özellikler) ---
+    // --- 2. YAZMA VE SİLME İŞLEMLERİ ---
 
     /// <summary>
     /// Belirtilen klasöre veya dosyaya yeni bir yetki kuralı ekler.
+    /// InheritanceFlags ile yetki alt dosya/klasörlere de geçer.
     /// </summary>
     public void YetkiEkle(string yol, string kullanici, string yetkiTuruStr, string izinDurumuStr)
     {
         // String olarak gelen verileri Windows Enum yapılarına çevir
-        FileSystemRights yetki = Enum.Parse<FileSystemRights>(yetkiTuruStr);
-        AccessControlType tip = Enum.Parse<AccessControlType>(izinDurumuStr);
+        FileSystemRights yetki = (FileSystemRights)Enum.Parse(typeof(FileSystemRights), yetkiTuruStr, true);
+        AccessControlType tip = (AccessControlType)Enum.Parse(typeof(AccessControlType), izinDurumuStr, true);
 
-        bool klasorMu = Directory.Exists(yol);
-        if (klasorMu)
+        // Kullanıcı hesabını doğrula — geçersizse IdentityNotMappedException fırlatır
+        var account = new NTAccount(kullanici);
+        account.Translate(typeof(SecurityIdentifier)); // Doğrulama: kullanıcı gerçekten var mı?
+
+        if (Directory.Exists(yol))
         {
             var dInfo = new DirectoryInfo(yol);
-            var security = dInfo.GetAccessControl();
+            DirectorySecurity security = dInfo.GetAccessControl();
+            
             // Klasörler için miras (Inheritance) kurallarını belirliyoruz ki alt dosyalara da geçsin
-            var rule = new FileSystemAccessRule(kullanici, yetki, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, tip);
+            var rule = new FileSystemAccessRule(
+                account,
+                yetki,
+                InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+                PropagationFlags.None,
+                tip
+            );
+            
             security.AddAccessRule(rule);
             dInfo.SetAccessControl(security);
         }
         else if (File.Exists(yol))
         {
             var fInfo = new FileInfo(yol);
-            var security = fInfo.GetAccessControl();
-            var rule = new FileSystemAccessRule(kullanici, yetki, tip);
+            FileSecurity security = fInfo.GetAccessControl();
+            
+            var rule = new FileSystemAccessRule(account, yetki, tip);
             security.AddAccessRule(rule);
             fInfo.SetAccessControl(security);
+        }
+        else
+        {
+            throw new FileNotFoundException($"Belirtilen yol bulunamadı: {yol}");
         }
     }
 
     /// <summary>
-    /// Belirtilen klasörden veya dosyadan mevcut bir yetkiyi siler.
-    /// Not: Sadece manuel eklenen (Miras alınmayan) yetkiler silinebilir.
+    /// Belirtilen klasörden veya dosyadan belirli bir yetkiyi siler.
+    /// Sadece manuel eklenen (Miras alınmayan) yetkiler silinebilir.
     /// </summary>
     public void YetkiSil(string yol, string kullanici, string yetkiTuruStr, string izinDurumuStr)
     {
-        // Tablodan gelen string verileri Enum'a çevir
-        FileSystemRights yetki = Enum.Parse<FileSystemRights>(yetkiTuruStr);
-        AccessControlType tip = Enum.Parse<AccessControlType>(izinDurumuStr);
+        FileSystemRights yetki = (FileSystemRights)Enum.Parse(typeof(FileSystemRights), yetkiTuruStr, true);
+        AccessControlType tip = (AccessControlType)Enum.Parse(typeof(AccessControlType), izinDurumuStr, true);
 
-        bool klasorMu = Directory.Exists(yol);
-        if (klasorMu)
+        if (Directory.Exists(yol))
         {
             var dInfo = new DirectoryInfo(yol);
-            var security = dInfo.GetAccessControl();
+            DirectorySecurity security = dInfo.GetAccessControl();
+            
             // Silerken de aynı miras parametrelerini vermek zorundayız ki doğru kuralı bulup silsin
-            var rule = new FileSystemAccessRule(kullanici, yetki, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, tip);
+            var rule = new FileSystemAccessRule(
+                kullanici,
+                yetki,
+                InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+                PropagationFlags.None,
+                tip
+            );
+            
             security.RemoveAccessRule(rule);
             dInfo.SetAccessControl(security);
         }
         else if (File.Exists(yol))
         {
             var fInfo = new FileInfo(yol);
-            var security = fInfo.GetAccessControl();
+            FileSecurity security = fInfo.GetAccessControl();
+            
             var rule = new FileSystemAccessRule(kullanici, yetki, tip);
             security.RemoveAccessRule(rule);
             fInfo.SetAccessControl(security);
+        }
+        else
+        {
+            throw new FileNotFoundException($"Belirtilen yol bulunamadı: {yol}");
+        }
+    }
+
+    /// <summary>
+    /// Belirtilen kullanıcının o path üzerindeki TÜM manuel (miras alınmayan) yetkilerini siler.
+    /// React'ten sadece { path, user } geldiğinde tüm kuralları temizler.
+    /// Miras alınmış kurallar silinemez — bunlar üst klasörden geliyor.
+    /// </summary>
+    public void KullanicininTumYetkileriniSil(string yol, string kullanici)
+    {
+        if (Directory.Exists(yol))
+        {
+            var dInfo = new DirectoryInfo(yol);
+            DirectorySecurity security = dInfo.GetAccessControl();
+            var rules = security.GetAccessRules(true, true, typeof(NTAccount));
+            
+            bool herhangiSilindi = false;
+
+            foreach (FileSystemAccessRule rule in rules)
+            {
+                // Sadece hedef kullanıcının kurallarını bul
+                if (string.Equals(rule.IdentityReference.Value, kullanici, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (rule.IsInherited)
+                    {
+                        // Miras alınmış kurallar doğrudan silinemez — bu beklenen davranıştır
+                        continue;
+                    }
+
+                    security.RemoveAccessRule(rule);
+                    herhangiSilindi = true;
+                }
+            }
+
+            if (herhangiSilindi)
+            {
+                dInfo.SetAccessControl(security);
+            }
+            else
+            {
+                // Hiç silinebilecek kural bulunamadı
+                throw new InvalidOperationException(
+                    $"'{kullanici}' kullanıcısının bu klasörde silinebilecek (miras alınmayan) yetkisi bulunamadı. " +
+                    "Miras alınmış yetkiler ancak üst klasörden kaldırılabilir."
+                );
+            }
+        }
+        else if (File.Exists(yol))
+        {
+            var fInfo = new FileInfo(yol);
+            FileSecurity security = fInfo.GetAccessControl();
+            var rules = security.GetAccessRules(true, true, typeof(NTAccount));
+            
+            bool herhangiSilindi = false;
+
+            foreach (FileSystemAccessRule rule in rules)
+            {
+                if (string.Equals(rule.IdentityReference.Value, kullanici, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (rule.IsInherited) continue;
+
+                    security.RemoveAccessRule(rule);
+                    herhangiSilindi = true;
+                }
+            }
+
+            if (herhangiSilindi)
+            {
+                fInfo.SetAccessControl(security);
+            }
+            else
+            {
+                throw new InvalidOperationException(
+                    $"'{kullanici}' kullanıcısının bu dosyada silinebilecek (miras alınmayan) yetkisi bulunamadı."
+                );
+            }
+        }
+        else
+        {
+            throw new FileNotFoundException($"Belirtilen yol bulunamadı: {yol}");
         }
     }
 }
