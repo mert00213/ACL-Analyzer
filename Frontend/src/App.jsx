@@ -115,6 +115,9 @@ function App() {
   const [isExitModalOpen, setIsExitModalOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // MERT: Bildirim Modal state'i — alert() yerine kurumsal modal sistemi
+  const [notificationModal, setNotificationModal] = useState({ isOpen: false, type: 'success', message: '' });
+
   // MERT: Canlı Akış (Live Streaming) durumu — C# chunk yolladıkça true kalır
   const [isStreaming, setIsStreaming] = useState(false);
 
@@ -279,11 +282,16 @@ function App() {
       }
       // ── success: Başarı mesajı (yetki ekleme/silme/düzenleme geri bildirimi) ──
       else if (type === 'success') {
-        alert(data);
+        // Hayalet Modu: "Tarama Tamamlandı" mesajlarını sessizce logla, ekrana basma
+        if (typeof data === 'string' && data.includes('Tarama Tamamlandı')) {
+          console.log('[Hayalet Modu] Sessiz mesaj:', data);
+          return;
+        }
+        setNotificationModal({ isOpen: true, type: 'success', message: data });
       }
       // ── error: Hata mesajı ──
       else if (type === 'error') {
-        alert("Bir Hata Oluştu: " + data);
+        setNotificationModal({ isOpen: true, type: 'error', message: 'Bir Hata Oluştu: ' + data });
         setIsStreaming(false);
         setIsProcessing(false);
       }
@@ -331,7 +339,7 @@ function App() {
     if (window.chrome && window.chrome.webview) {
       window.chrome.webview.postMessage({ command: "scanFolder", data: { path: "C:\\" } });
     } else {
-      alert("Bu özellik yalnızca uygulamanın (WebView2) içindeyken çalışır.");
+      setNotificationModal({ isOpen: true, type: 'error', message: 'Bu özellik yalnızca uygulamanın (WebView2) içindeyken çalışır.' });
       setIsProcessing(false);
       setIsStreaming(false);
     }
@@ -671,6 +679,58 @@ function App() {
             <div className="px-5 py-3 bg-white border-t border-slate-100 flex justify-end gap-2">
               <button onClick={() => setIsPermissionModalOpen(false)} className="px-4 py-1.5 rounded text-slate-600 hover:bg-slate-100 text-sm font-medium border border-slate-200">İptal</button>
               <button disabled={!permissionForm.user.trim()} onClick={() => { setIsPermissionModalOpen(false); if (window.chrome && window.chrome.webview) { if (modalMode === 'add') { window.chrome.webview.postMessage({ command: 'addPermission', data: { path: activeFolder, user: permissionForm.user.trim(), perm: permissionForm.perm } }); } else { window.chrome.webview.postMessage({ command: 'editPermission', data: { path: activeFolder, oldUser: permissionForm.oldUser, newUser: permissionForm.user.trim(), perm: permissionForm.perm } }); } } }} className={`px-4 py-1.5 rounded text-white text-sm font-medium ${!permissionForm.user.trim() ? 'bg-slate-300' : modalMode === 'add' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'}`}>{modalMode === 'add' ? 'Ekle' : 'Kaydet'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MERT: Bildirim Modalı — alert() yerine kurumsal UI geri bildirimi */}
+      {notificationModal.isOpen && (
+        <div
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-[60]"
+          onClick={() => setNotificationModal({ isOpen: false, type: 'success', message: '' })}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-[modalIn_0.25s_ease-out]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Üst Bölüm — İkon + Mesaj */}
+            <div className="px-6 pt-8 pb-4 flex flex-col items-center text-center">
+              {/* İkon */}
+              {notificationModal.type === 'success' ? (
+                <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+              ) : (
+                <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center mb-4">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </div>
+              )}
+              {/* Başlık */}
+              <h3 className={`text-lg font-bold mb-2 ${notificationModal.type === 'success' ? 'text-emerald-700' : 'text-red-700'}`}>
+                {notificationModal.type === 'success' ? 'İşlem Başarılı' : 'Hata Oluştu'}
+              </h3>
+              {/* Mesaj */}
+              <p className="text-slate-600 text-sm leading-relaxed">
+                {notificationModal.message}
+              </p>
+            </div>
+            {/* Modal Alt Bölüm — Tamam Butonu */}
+            <div className="px-6 pb-6 pt-2 flex justify-center">
+              <button
+                onClick={() => setNotificationModal({ isOpen: false, type: 'success', message: '' })}
+                className={`px-8 py-2.5 rounded-lg text-white text-sm font-semibold shadow-md transition-all duration-200 hover:shadow-lg active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                  notificationModal.type === 'success'
+                    ? 'bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500'
+                    : 'bg-red-600 hover:bg-red-700 focus:ring-red-500'
+                }`}
+              >
+                Tamam
+              </button>
             </div>
           </div>
         </div>
